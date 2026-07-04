@@ -1,0 +1,11 @@
+task_id: frontend-toolchain
+stage: DONE
+status: PASS
+iteration: 0
+complexity: HIGH
+next_actor: none
+plan_version: 1
+exec_version: 1
+validation_version: 1
+open_issues: []
+last_error: null
