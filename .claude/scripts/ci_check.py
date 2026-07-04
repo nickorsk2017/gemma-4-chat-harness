@@ -26,7 +26,8 @@ def field(text, key):
 
 def main():
     viol = []
-    states = sorted(glob.glob(os.path.join(TASKS, "*", "STATE.yaml")))
+    # open tasks only: tasks/<YYYY-MM>/<id>/STATE.yaml (archive DONE/ is clean by construction)
+    states = sorted(glob.glob(os.path.join(TASKS, "*", "*", "STATE.yaml")))
     for sp in states:
         tid = os.path.basename(os.path.dirname(sp))
         s = open(sp, encoding="utf-8").read()

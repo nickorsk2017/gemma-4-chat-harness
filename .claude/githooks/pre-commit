@@ -30,9 +30,11 @@ def main():
     tid = open(ACTIVE).read().strip()
     if not tid:
         sys.exit(0)  # no active task -> nothing to guard
-    sp = os.path.join(ROOT, ".claude", "tasks", tid, "STATE.yaml")
-    if not os.path.isfile(sp):
-        sys.exit(0)
+    import glob
+    hits = glob.glob(os.path.join(ROOT, ".claude", "tasks", "*", tid, "STATE.yaml"))
+    if not hits:
+        sys.exit(0)  # active id not among open tasks (already archived) -> nothing to guard
+    sp = hits[0]
     s = open(sp, encoding="utf-8").read()
     stage = field(s, "stage")
     oi = field(s, "open_issues")
