@@ -1,0 +1,11 @@
+task_id: example-task
+stage: DONE            # INIT|PLANNED|APPROVED|EXECUTED|VALIDATED|DONE|ESCALATED
+status: PASS           # PENDING|PASS|FAIL
+iteration: 0           # FAIL re-routes so far; escalate when >= max_iterations
+complexity: MEDIUM     # LOW|MEDIUM|HIGH
+next_actor: none       # Engineer|Planner|Executor|Validator|none
+plan_version: 1
+exec_version: 1
+validation_version: 1
+open_issues: []        # on FAIL: [{id,type,severity,ref}] handoff to next_actor
+last_error: null

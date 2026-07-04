@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""pre-commit gate for the artifact harness.
+
+Blocks a commit when the ACTIVE task is in a state that must not be committed:
+  - stage == ESCALATED           (loop exhausted / broken)
+  - open_issues non-empty        (failed validation still pending)
+  - stage == DONE                (must close first: `runner.py done`)
+WIP commits mid-task (INIT/PLANNED/APPROVED/EXECUTED/VALIDATED, clean) pass.
+Install once: `python3 .claude/runner.py install-hooks`.
+"""
+import os, sys
+
+ROOT = os.getcwd()  # git runs hooks from the repo root
+ACTIVE = os.path.join(ROOT, ".claude", "tasks", "ACTIVE")
+
+def field(text, key):
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith(key + ":"):
+            return s.split(":",1)[1].split("#")[0].strip()
+    return None
+
+def block(msg):
+    print(f"✖ commit blocked: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+def main():
+    if not os.path.isfile(ACTIVE):
+        sys.exit(0)
+    tid = open(ACTIVE).read().strip()
+    if not tid:
+        sys.exit(0)  # no active task -> nothing to guard
+    sp = os.path.join(ROOT, ".claude", "tasks", tid, "STATE.yaml")
+    if not os.path.isfile(sp):
+        sys.exit(0)
+    s = open(sp, encoding="utf-8").read()
+    stage = field(s, "stage")
+    oi = field(s, "open_issues")
+
+    if stage == "ESCALATED":
+        block(f"active task '{tid}' is ESCALATED. Resolve it (Engineer) before committing.")
+    if oi not in (None, "[]", ""):
+        block(f"active task '{tid}' has unresolved open_issues {oi}. "
+              f"Route them through the pipeline first.")
+    if stage == "DONE":
+        block(f"active task '{tid}' is DONE. Close it with "
+              f"`python3 .claude/runner.py done` to clear the active task, then commit.")
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
