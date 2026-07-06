@@ -3,3 +3,11 @@
 # Python
 __pycache__/
 *.py[cod]
+
+# Secrets — never commit real keys
+.env
+.env.*
+!.env.example
+
+# Chat attachments saved by the gateway (local dev)
+uploads/

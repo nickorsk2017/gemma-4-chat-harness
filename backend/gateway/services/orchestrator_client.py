@@ -5,11 +5,10 @@ The gateway is an MCP *client* of the orchestrator's MCP server. It invokes the
 orchestrator's ``AgentResponse[OrchestrationResult]`` envelope, extracting the
 merged ``answer``.
 
-Three implementations behind one Protocol, selected by config:
-- ``StdioMcpOrchestratorClient`` — real MCP-over-stdio; spawns the orchestrator as a
+Two implementations behind one Protocol, selected by config:
+- ``StdioMcpOrchestratorClient`` — MCP-over-stdio; spawns the orchestrator as a
   subprocess (fastmcp Client on a ``{command, args}`` spec). This is the default.
-- ``HttpMcpOrchestratorClient``  — real MCP-over-HTTP (fastmcp Client on a URL).
-- ``MockOrchestratorClient``     — in-process stub; zero external processes (tests).
+- ``HttpMcpOrchestratorClient``  — MCP-over-HTTP (fastmcp Client on a URL).
 
 The client never raises across its boundary: failures are returned as an
 ``OrchestrationOutcome`` with ``ok=False`` so the service layer can map them into
@@ -35,11 +34,16 @@ class OrchestrationOutcome(BaseModel):
 
 
 class OrchestratorClient(Protocol):
-    """Anything that can turn a prompt into a merged answer."""
+    """Anything that can orchestrate a prompt and manage its threads."""
 
     async def orchestrate(
-        self, prompt: str, context: dict[str, str] | None = None
+        self,
+        prompt: str,
+        context: dict[str, str] | None = None,
+        thread_id: str | None = None,
     ) -> OrchestrationOutcome: ...
+
+    async def delete_thread(self, thread_id: str) -> OrchestrationOutcome: ...
 
 
 def _parse_envelope(payload: Any) -> OrchestrationOutcome:
@@ -70,15 +74,30 @@ def _parse_envelope(payload: Any) -> OrchestrationOutcome:
     return OrchestrationOutcome(ok=True, answer=answer, subtasks=subtasks)
 
 
-async def _run_orchestration(
-    spec: Any, tool: str, timeout: float, prompt: str, context: dict[str, str] | None
-) -> OrchestrationOutcome:
-    """Invoke the orchestrator ``tool`` via a FastMCP ``Client(spec)``.
+def _parse_ack(payload: Any) -> OrchestrationOutcome:
+    """Map an acknowledgement envelope (e.g. ``delete_thread``) -> outcome.
+
+    Only the ``status``/``error`` fields matter; no answer is expected.
+    """
+    if not isinstance(payload, dict):
+        return OrchestrationOutcome(ok=False, error="malformed orchestrator payload")
+    if payload.get("status") == "error":
+        return OrchestrationOutcome(
+            ok=False, error=payload.get("error") or "orchestrator error"
+        )
+    return OrchestrationOutcome(ok=True)
+
+
+async def _call_tool(
+    spec: Any, tool: str, timeout: float, arguments: dict[str, Any]
+) -> Any | OrchestrationOutcome:
+    """Invoke one orchestrator ``tool`` via a FastMCP ``Client(spec)``.
 
     ``spec`` is whatever FastMCP's ``Client`` accepts as a server: a URL string
     (HTTP) or a ``{"command", "args"}`` dict (stdio subprocess). Shared by both
-    real transports so the call/parse/fail-soft body lives in exactly one place.
-    Never raises across the boundary — every failure becomes ``ok=False``.
+    real transports so the call/fail-soft body lives in exactly one place.
+    Returns the extracted envelope payload, or an ``ok=False`` outcome on any
+    transport failure — never raises across the boundary.
     """
     # Imported lazily so the package imports even if fastmcp isn't installed
     # (e.g. when running purely in mock mode).
@@ -89,16 +108,43 @@ async def _run_orchestration(
     except ImportError as exc:  # pragma: no cover - env issue
         return OrchestrationOutcome(ok=False, error=f"fastmcp not available: {exc}")
 
-    request = {"prompt": prompt, "context": context or {}}
     try:
         async with asyncio.timeout(timeout):
             async with Client(spec) as client:
-                result = await client.call_tool(tool, {"request": request})
-        return _parse_envelope(_extract(result))
+                result = await client.call_tool(tool, arguments)
+        return _extract(result)
     except TimeoutError:
         return OrchestrationOutcome(ok=False, error="orchestrator timed out")
     except Exception as exc:  # noqa: BLE001 - fail soft across the boundary
         return OrchestrationOutcome(ok=False, error=str(exc))
+
+
+async def _run_orchestration(
+    spec: Any,
+    tool: str,
+    timeout: float,
+    prompt: str,
+    context: dict[str, str] | None,
+    thread_id: str | None = None,
+) -> OrchestrationOutcome:
+    """Invoke the ``orchestrate`` tool and parse its answer envelope."""
+    request: dict[str, Any] = {"prompt": prompt, "context": context or {}}
+    if thread_id:
+        request["thread_id"] = thread_id
+    payload = await _call_tool(spec, tool, timeout, {"request": request})
+    if isinstance(payload, OrchestrationOutcome):  # transport failure
+        return payload
+    return _parse_envelope(payload)
+
+
+async def _run_delete(
+    spec: Any, tool: str, timeout: float, thread_id: str
+) -> OrchestrationOutcome:
+    """Invoke the ``delete_thread`` tool and parse its acknowledgement."""
+    payload = await _call_tool(spec, tool, timeout, {"thread_id": thread_id})
+    if isinstance(payload, OrchestrationOutcome):  # transport failure
+        return payload
+    return _parse_ack(payload)
 
 
 class StdioMcpOrchestratorClient:
@@ -118,12 +164,22 @@ class StdioMcpOrchestratorClient:
         }
         self._tool = settings.orchestrator_tool
         self._timeout = settings.orchestrator_timeout_s
+        self._delete_tool = settings.orchestrator_delete_tool
+        self._delete_timeout = settings.orchestrator_delete_timeout_s
 
     async def orchestrate(
-        self, prompt: str, context: dict[str, str] | None = None
+        self,
+        prompt: str,
+        context: dict[str, str] | None = None,
+        thread_id: str | None = None,
     ) -> OrchestrationOutcome:
         return await _run_orchestration(
-            self._spec, self._tool, self._timeout, prompt, context
+            self._spec, self._tool, self._timeout, prompt, context, thread_id
+        )
+
+    async def delete_thread(self, thread_id: str) -> OrchestrationOutcome:
+        return await _run_delete(
+            self._spec, self._delete_tool, self._delete_timeout, thread_id
         )
 
 
@@ -134,12 +190,22 @@ class HttpMcpOrchestratorClient:
         self._url = settings.orchestrator_mcp_url
         self._tool = settings.orchestrator_tool
         self._timeout = settings.orchestrator_timeout_s
+        self._delete_tool = settings.orchestrator_delete_tool
+        self._delete_timeout = settings.orchestrator_delete_timeout_s
 
     async def orchestrate(
-        self, prompt: str, context: dict[str, str] | None = None
+        self,
+        prompt: str,
+        context: dict[str, str] | None = None,
+        thread_id: str | None = None,
     ) -> OrchestrationOutcome:
         return await _run_orchestration(
-            self._url, self._tool, self._timeout, prompt, context
+            self._url, self._tool, self._timeout, prompt, context, thread_id
+        )
+
+    async def delete_thread(self, thread_id: str) -> OrchestrationOutcome:
+        return await _run_delete(
+            self._url, self._delete_tool, self._delete_timeout, thread_id
         )
 
 
@@ -156,29 +222,10 @@ def _extract(result: Any) -> Any:
     return None
 
 
-class MockOrchestratorClient:
-    """In-process stub — mirrors mcp/'s 'mock by default' rule.
-
-    Returns a deterministic merged answer without any external process, so the
-    gateway runs and is testable with zero dependencies.
-    """
-
-    async def orchestrate(
-        self, prompt: str, context: dict[str, str] | None = None
-    ) -> OrchestrationOutcome:
-        text = prompt.strip()
-        answer = (
-            f"(mock orchestrator) Merged answer for: “{text}”. "
-            "The web, PDF and image sub-agents would run in parallel and their "
-            "results would be synthesized here."
-        )
-        return OrchestrationOutcome(ok=True, answer=answer, subtasks=0)
-
-
 def build_orchestrator_client(settings: Settings) -> OrchestratorClient:
     """Factory: pick the client implementation from settings.orchestrator_mode."""
     if settings.orchestrator_mode == "stdio":
         return StdioMcpOrchestratorClient(settings)
     if settings.orchestrator_mode == "http":
         return HttpMcpOrchestratorClient(settings)
-    return MockOrchestratorClient()
+    raise ValueError(f"Unknown orchestrator mode: {settings.orchestrator_mode!r}")

@@ -1,9 +1,12 @@
 """Business logic: orchestrator client + chat service."""
 
-from gateway.services.chat_service import ChatService, GatewayError
+from gateway.services.chat_service import (
+    ChatService,
+    GatewayError,
+    GatewayValidationError,
+)
 from gateway.services.orchestrator_client import (
     HttpMcpOrchestratorClient,
-    MockOrchestratorClient,
     OrchestratorClient,
     StdioMcpOrchestratorClient,
     build_orchestrator_client,
@@ -12,9 +15,9 @@ from gateway.services.orchestrator_client import (
 __all__ = [
     "ChatService",
     "GatewayError",
+    "GatewayValidationError",
     "OrchestratorClient",
     "StdioMcpOrchestratorClient",
     "HttpMcpOrchestratorClient",
-    "MockOrchestratorClient",
     "build_orchestrator_client",
 ]

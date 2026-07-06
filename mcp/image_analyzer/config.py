@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from agent_core.llm import DEFAULT_NVIDIA_MODEL, NVIDIA_BASE_URL
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,10 +14,12 @@ class ImageAnalyzerSettings(BaseSettings):
     port: int = 8103
     transport: str = "stdio"  # "stdio" | "sse" | "streamable-http"
 
-    # Providers: "mock" ships by default; set real keys to go live.
-    vision_provider: str = "mock"
-    vision_api_key: str | None = None
-    ocr_provider: str = "mock"
+    # LLM/vision: gemma via the NVIDIA OpenAI-compatible endpoint. GEMMA_API_KEY
+    # (env) is REQUIRED; there is no mock LLM fallback.
+    llm_provider: str = "nvidia"
+    llm_model: str = DEFAULT_NVIDIA_MODEL
+    llm_base_url: str = NVIDIA_BASE_URL
+    llm_api_key: str | None = Field(default=None, validation_alias="GEMMA_API_KEY")
     request_timeout_s: float = 30.0
 
 

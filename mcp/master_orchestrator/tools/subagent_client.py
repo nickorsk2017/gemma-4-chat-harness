@@ -12,13 +12,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import time
 from typing import Any
 
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from agent_core.envelope import AgentResponse
+from agent_core.envelope import AgentResponse, Status
 from master_orchestrator.config import settings
+
+logger = logging.getLogger("master_orchestrator.subagents")
 
 _client: MultiServerMCPClient | None = None
 
@@ -61,14 +65,45 @@ def _to_envelope(raw: Any, agent: str) -> AgentResponse[Any]:
         return AgentResponse.fail(agent, f"sub-agent returned a non-envelope: {raw!r}")
 
 
+def _shape_args(schema: dict[str, Any], arguments: dict[str, Any]) -> dict[str, Any]:
+    """Fit planner arguments to the tool schema — idempotently.
+
+    Sub-agent tools take a single ``request`` model param, and the planner LLM
+    is prompted to emit arguments already shaped ``{"request": {...}}``. Never
+    wrap twice; unwrap when the adapter flattened the schema instead.
+    """
+    wrapped = set(arguments.keys()) == {"request"} and isinstance(
+        arguments["request"], dict
+    )
+    if "request" in schema:
+        return arguments if wrapped else {"request": arguments}
+    return arguments["request"] if wrapped else arguments
+
+
 async def call_subagent(
     agent: str, tool: str, arguments: dict[str, Any]
 ) -> AgentResponse[Any]:
     """Invoke ``tool`` on ``agent`` and return its typed envelope.
 
     Never raises across the boundary — timeouts, unknown agents/tools, and
-    transport errors all come back as error envelopes.
+    transport errors all come back as error envelopes. Every call is logged
+    with its duration and outcome.
     """
+    started = time.monotonic()
+    envelope = await _call_subagent(agent, tool, arguments)
+    elapsed = time.monotonic() - started
+    if envelope.status is Status.OK:
+        logger.info("subagent %s.%s ok in %.1fs", agent, tool, elapsed)
+    else:
+        logger.warning(
+            "subagent %s.%s FAILED in %.1fs: %s", agent, tool, elapsed, envelope.error
+        )
+    return envelope
+
+
+async def _call_subagent(
+    agent: str, tool: str, arguments: dict[str, Any]
+) -> AgentResponse[Any]:
     if agent not in settings.subagents:
         return AgentResponse.fail(agent, f"unknown agent {agent!r}")
 
@@ -79,13 +114,7 @@ async def call_subagent(
                 return AgentResponse.fail(
                     agent, f"unknown tool {tool!r} on agent {agent!r}"
                 )
-            # Sub-agent tools take a single `request` model param; pass the
-            # arguments through it (fall back to flat args if the adapter
-            # flattened the schema).
-            args = (
-                {"request": arguments} if "request" in (lc_tool.args or {}) else arguments
-            )
-            raw = await lc_tool.ainvoke(args)
+            raw = await lc_tool.ainvoke(_shape_args(lc_tool.args or {}, arguments))
         return _to_envelope(raw, agent)
     except TimeoutError:
         return AgentResponse.fail(agent, "sub-agent timed out")

@@ -5,6 +5,7 @@ description = "image_analyzer MCP server — image analysis (describe, detect, O
 requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=2.0.0",
+    "langchain-core>=0.3.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "agent-core>=0.1.0",

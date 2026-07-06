@@ -18,5 +18,10 @@ RUN pip install --upgrade pip \
 
 EXPOSE 8100
 # Serve the orchestrator over streamable-HTTP (path /mcp) so the gateway can reach it.
-# Transport/host/port are chosen here at run time — the application code is untouched.
-CMD ["python", "-c", "from master_orchestrator.main import mcp; mcp.run(transport='streamable-http', host='0.0.0.0', port=8100)"]
+# Transport/host/port stay runtime configuration (env, read by main.py). main.py's
+# HTTP mode also normalizes the Host header so the MCP SDK's DNS-rebinding
+# protection (localhost-only allowlist) doesn't 421 in-docker calls to `mcp:8100`.
+ENV ORCHESTRATOR_TRANSPORT=streamable-http \
+    ORCHESTRATOR_HTTP_HOST=0.0.0.0 \
+    ORCHESTRATOR_HTTP_PORT=8100
+CMD ["python", "-m", "master_orchestrator.main"]

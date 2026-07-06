@@ -41,13 +41,15 @@ so `gateway.main:app` resolves directly with no nested wrapper directory.
    `{ status: "Success" | "Failed", data?: T, error_text?: string }`.
 4. **Config, not constants.** URLs, modes, timeouts, origins, DB URL come from
    `_common/env` (env-backed). No hardcoded secrets.
-5. **Fail soft.** No exception crosses the HTTP boundary as an unstructured 500 — wrap it
-   in `ApiResponse.fail(...)` at HTTP 200.
-6. **Real by default, mock on demand.** The orchestrator MCP client sits behind an
-   interface selected by config. Default `GATEWAY_ORCHESTRATOR_MODE=stdio` spawns the
+5. **Structured errors, honest status codes.** No exception crosses the HTTP boundary
+   unstructured — every error is an `ApiResponse.fail(...)` body, but with a truthful
+   HTTP status: 400 (client/validation: empty prompt, bad attachment), 502
+   (orchestration/upstream failure), 500 (unexpected). Success is 200.
+6. **Always real.** The orchestrator MCP client sits behind an interface selected by
+   config — there is NO mock mode. Default `GATEWAY_ORCHESTRATOR_MODE=stdio` spawns the
    real `master_orchestrator` MCP server as a subprocess; `http` connects to a running
-   one over HTTP; `mock` is the in-process stub for offline / tests (zero external
-   processes). Spawn command/args are config (rule 4), never hardcoded.
+   one over HTTP (the composed stack uses this). Spawn command/args are config (rule 4),
+   never hardcoded. Tests stub the `OrchestratorClient` Protocol directly.
 7. **MCP boundary.** The gateway is an MCP *client* of `master_orchestrator`; it calls the
    `orchestrate` tool and maps the returned envelope. It never imports `mcp/` packages.
 
@@ -63,6 +65,6 @@ pip install -e .[dev]
 # Real path (default): spawns master_orchestrator over stdio — it must be importable
 # in this env (pip install -e ../mcp/master_orchestrator).
 uvicorn gateway.main:app
-# Offline path (no orchestrator process): GATEWAY_ORCHESTRATOR_MODE=mock uvicorn gateway.main:app
-# POST http://localhost:8000/api/chat  {"prompt":"hello"}
+# POST http://localhost:8000/api/chat        {"prompt":"hello"}
+# POST http://localhost:8000/api/chat/files  multipart: prompt=... files=[img.png, doc.pdf]
 ```

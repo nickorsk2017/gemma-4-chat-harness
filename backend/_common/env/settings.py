@@ -12,7 +12,7 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-OrchestratorMode = Literal["mock", "http", "stdio"]
+OrchestratorMode = Literal["http", "stdio"]
 
 
 class Settings(BaseSettings):
@@ -33,10 +33,14 @@ class Settings(BaseSettings):
 
     # --- Orchestrator MCP integration ---
     # The gateway is an MCP *client* of master_orchestrator. Mode selects transport:
-    # "stdio" -> spawn the orchestrator MCP server as a subprocess (default, real).
+    # "stdio" -> spawn the orchestrator MCP server as a subprocess (default).
     # "http"  -> connect to an already-running orchestrator MCP server over HTTP.
-    # "mock"  -> in-process stub (offline / tests, zero external processes).
     orchestrator_mode: OrchestratorMode = "stdio"
+
+    # --- Uploads (chat attachments: images / PDFs) ---
+    # In docker this is a volume shared with the mcp container so sub-agents can
+    # read the saved files by the same path.
+    upload_dir: str = "./uploads"
 
     # stdio transport: how to spawn the orchestrator (config, not constants).
     orchestrator_command: str = "python"
@@ -48,8 +52,14 @@ class Settings(BaseSettings):
     orchestrator_mcp_url: str = "http://127.0.0.1:8100/mcp"
 
     # shared: tool name to invoke and the per-request hard timeout.
+    # Must exceed the whole LLM chain: planner + slowest sub-agent (see
+    # ORCHESTRATOR_SUBAGENT_TIMEOUT_S) + synthesis.
     orchestrator_tool: str = "orchestrate"
-    orchestrator_timeout_s: float = 30.0
+    # Tool that deletes a conversation thread from the orchestrator's memory.
+    orchestrator_delete_tool: str = "delete_thread"
+    orchestrator_timeout_s: float = 180.0
+    # Thread deletion is a checkpointer call, not an LLM chain — keep it short.
+    orchestrator_delete_timeout_s: float = 30.0
 
     # --- Persistence (scaffolded; not on the mock chat path) ---
     database_url: str = "sqlite+aiosqlite:///./gateway.db"
