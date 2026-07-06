@@ -31,6 +31,9 @@ services:
       GEMMA_API_KEY: "${GEMMA_API_KEY:?GEMMA_API_KEY is required (see .env.example)}"
       # Per-sub-agent budget (real gemma calls over full documents/images).
       ORCHESTRATOR_SUBAGENT_TIMEOUT_S: "${ORCHESTRATOR_SUBAGENT_TIMEOUT_S:-120}"
+      # Per-attempt LLM HTTP timeout (agent_core.llm). Fail fast so one hung
+      # attempt + one retry (2x45s) still fit the 120s sub-agent budget.
+      LLM_REQUEST_TIMEOUT_S: "${LLM_REQUEST_TIMEOUT_S:-45}"
       # Thread memory: LangGraph AsyncPostgresSaver checkpointer.
       ORCHESTRATOR_DATABASE_URL: "postgresql://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:-agent}@postgres:5432/${POSTGRES_DB:-agent_chat}"
       # LangSmith tracing for ALL agents (orchestrator + stdio sub-agents inherit
