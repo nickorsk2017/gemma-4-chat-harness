@@ -3,6 +3,23 @@
 name: agent-chat
 
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-agent}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-agent}"
+      POSTGRES_DB: "${POSTGRES_DB:-agent_chat}"
+    volumes:
+      # LangGraph thread checkpoints (conversation history + stored PDF text).
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agent} -d ${POSTGRES_DB:-agent_chat}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [agentnet]
+    restart: unless-stopped
+
   mcp:
     build:
       context: ./mcp
@@ -10,8 +27,24 @@ services:
     ports:
       - "${MCP_PORT:-8100}:8100"
     environment:
-      # Sub-agents are spawned in-process over stdio by the orchestrator.
-      ORCHESTRATOR_LLM_PROVIDER: "${ORCHESTRATOR_LLM_PROVIDER:-mock}"
+      # Single real-LLM key for all agents (no mock fallback) — fail early if unset.
+      GEMMA_API_KEY: "${GEMMA_API_KEY:?GEMMA_API_KEY is required (see .env.example)}"
+      # Per-sub-agent budget (real gemma calls over full documents/images).
+      ORCHESTRATOR_SUBAGENT_TIMEOUT_S: "${ORCHESTRATOR_SUBAGENT_TIMEOUT_S:-120}"
+      # Thread memory: LangGraph AsyncPostgresSaver checkpointer.
+      ORCHESTRATOR_DATABASE_URL: "postgresql://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:-agent}@postgres:5432/${POSTGRES_DB:-agent_chat}"
+      # LangSmith tracing for ALL agents (orchestrator + stdio sub-agents inherit
+      # this env). Optional — tracing stays off when unset (see .env.example).
+      LANGSMITH_TRACING: "${LANGSMITH_TRACING:-false}"
+      LANGSMITH_API_KEY: "${LANGSMITH_API_KEY:-}"
+      LANGSMITH_ENDPOINT: "${LANGSMITH_ENDPOINT:-https://api.smith.langchain.com}"
+      LANGSMITH_PROJECT: "${LANGSMITH_PROJECT:-gemma-chat}"
+    volumes:
+      # Chat attachments saved by the gateway; sub-agents read them by path.
+      - uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks: [agentnet]
     restart: unless-stopped
 
@@ -25,9 +58,14 @@ services:
       GATEWAY_HOST: "0.0.0.0"
       GATEWAY_PORT: "8000"
       GATEWAY_CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
-      # "mock" (default) runs standalone; set "http" to route through the mcp service.
-      GATEWAY_ORCHESTRATOR_MODE: "${GATEWAY_ORCHESTRATOR_MODE:-mock}"
+      # The gateway always routes through the mcp service in the composed stack.
+      GATEWAY_ORCHESTRATOR_MODE: "http"
       GATEWAY_ORCHESTRATOR_MCP_URL: "http://mcp:8100/mcp"
+      # Total budget: planner + slowest sub-agent + synthesis.
+      GATEWAY_ORCHESTRATOR_TIMEOUT_S: "${GATEWAY_ORCHESTRATOR_TIMEOUT_S:-180}"
+      GATEWAY_UPLOAD_DIR: "/data/uploads"
+    volumes:
+      - uploads:/data/uploads
     depends_on: [mcp]
     networks: [agentnet]
     restart: unless-stopped
@@ -49,3 +87,7 @@ services:
 networks:
   agentnet:
     driver: bridge
+
+volumes:
+  uploads:
+  pgdata:
