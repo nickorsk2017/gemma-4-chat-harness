@@ -5,10 +5,10 @@ from __future__ import annotations
 from fastmcp import FastMCP
 
 from web_agent.config import settings
-from web_agent.tools import web_tools
+from web_agent.tools import search_web
 
 mcp = FastMCP("web_agent")
-web_tools.register(mcp)
+search_web.register(mcp)
 
 
 def main() -> None:

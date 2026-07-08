@@ -10,7 +10,7 @@ from pydantic import Field
 from agent_core.envelope import AgentResponse
 from agent_core.files import FilePayload
 from image_analyzer.schemas.image import ImageAnalysis
-from image_analyzer.services.analyze_image import analyze_image as run_image_analysis
+from image_analyzer.services.analyze_service import analyze_image as run_image_analysis
 
 AGENT = "image_analyzer"
 

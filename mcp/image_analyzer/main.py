@@ -5,10 +5,10 @@ from __future__ import annotations
 from fastmcp import FastMCP
 
 from image_analyzer.config import settings
-from image_analyzer.tools import image_tools
+from image_analyzer.tools import analyze_image
 
 mcp = FastMCP("image_analyzer")
-image_tools.register(mcp)
+analyze_image.register(mcp)
 
 
 def main() -> None:

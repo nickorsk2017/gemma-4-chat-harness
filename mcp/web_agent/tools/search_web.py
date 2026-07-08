@@ -15,7 +15,7 @@ from web_agent.schemas.web import SearchResult
 
 AGENT = "web_agent"
 
-@traceable("web_agent.tools.providers.register")
+@traceable("web_agent.tools.search_web.register")
 def register(mcp: FastMCP) -> None:
     @traceable("run search web tool")
     @mcp.tool

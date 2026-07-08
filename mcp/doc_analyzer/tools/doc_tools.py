@@ -10,7 +10,7 @@ from pydantic import Field
 from agent_core.envelope import AgentResponse
 from agent_core.files import FilePayload
 from doc_analyzer.schemas.document import DocAnalysis
-from doc_analyzer.tools import providers
+from doc_analyzer.services.analyze import analyze_document as run_doc_analysis
 
 AGENT = "doc_analyzer"
 
@@ -27,7 +27,7 @@ def register(mcp: FastMCP) -> None:
         try:
             if file is None:
                 return AgentResponse.fail(AGENT, "no document file was provided")
-            result = await providers.analyze_document(prompt, file)
+            result = await run_doc_analysis(prompt, file)
             return AgentResponse.ok(AGENT, result)
         except Exception as exc:  # noqa: BLE001
             return AgentResponse.fail(AGENT, str(exc))
