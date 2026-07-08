@@ -10,7 +10,7 @@ from pydantic import Field
 from agent_core.envelope import AgentResponse
 from agent_core.files import FilePayload
 from doc_analyzer.schemas.document import DocAnalysis
-from doc_analyzer.services.analyze import analyze_document as run_doc_analysis
+from doc_analyzer.services.analyze_service import analyze_document as run_doc_analysis
 
 AGENT = "doc_analyzer"
 
