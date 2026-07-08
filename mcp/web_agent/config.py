@@ -22,15 +22,11 @@ class WebAgentSettings(BaseSettings):
     llm_api_key: str | None = Field(default=None, validation_alias="GEMMA_API_KEY")
     request_timeout_s: float = 15.0
 
-    # Live web search: Tavily's hosted MCP server. TAVILY_API_KEY (env) is
-    # required for search_web/get_news; other tools work without it.
+    # Live web search: Tavily's REST search API (direct aiohttp call, no hosted
+    # MCP). TAVILY_API_KEY (env) is required by the search_web tool.
     tavily_api_key: str | None = Field(default=None, validation_alias="TAVILY_API_KEY")
-    tavily_mcp_base: str = "https://mcp.tavily.com/mcp/"
-
-    def tavily_mcp_url(self) -> str | None:
-        if not self.tavily_api_key:
-            return None
-        return f"{self.tavily_mcp_base}?tavilyApiKey={self.tavily_api_key}"
+    tavily_api_url: str = "https://api.tavily.com/search"
+    tavily_timeout_s: float = 30.0
 
 
 settings = WebAgentSettings()

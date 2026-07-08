@@ -20,12 +20,12 @@ Browser ── Next.js frontend (:3000)
               │  streamable-HTTP MCP
               ▼
          master_orchestrator (:8100 in-docker "mcp" service)
-              │  planner (LLM structured output) → parallel fan-out over stdio
-              ├─ web_agent      — search_web / get_news (Tavily MCP), weather, fetch_url
+              │  Gemma tool-calling loop → parallel tool calls over stdio
+              ├─ web_agent      — search_web (Tavily MCP)
               ├─ doc_analyzer   — summarize_document / ask_document (PDF text from thread)
               └─ image_analyzer — describe / detect_objects / ocr
               │
-         PostgreSQL — LangGraph thread checkpoints (history + stored document text)
+         PostgreSQL — orchestrator thread store (history + stored document text)
 ```
 
 ## Repository structure
@@ -36,7 +36,7 @@ Browser ── Next.js frontend (:3000)
 | `backend/` | FastAPI gateway + services ([rules](backend/CLAUDE.md)) |
 | `mcp/` | Orchestrator + sub-agents, FastMCP ([rules](mcp/CLAUDE.md)) |
 | `mcp/agent_core/` | Shared response envelope + the single LLM factory (`llm.py`) |
-| `mcp/master_orchestrator/` | Planner, LangGraph fan-out graph, synthesis |
+| `mcp/master_orchestrator/` | Gemma tool-calling loop over sub-agents + thread memory store |
 | `mcp/web_agent/`, `mcp/doc_analyzer/`, `mcp/image_analyzer/` | Sub-agents (independent distributions) |
 | `mcp/scripts/gemma_healthcheck.py` | Docker-free LLM reachability probe |
 | `.claude/` | Execution harness: runner, roles, hooks, task artifacts |
@@ -67,6 +67,7 @@ make build / rebuild                  build images (rebuild = no cache)
 make logs / ps                        observe
 make clean                            stop + remove volumes and local images
 make gemma-check                      probe the LLM endpoint (no docker needed)
+make mcp-check                        liveness-check the mcp service API (no agents/LLM invoked)
 ```
 
 **After changing any code or dependency under `mcp/`, `backend/`, or `frontend/`,

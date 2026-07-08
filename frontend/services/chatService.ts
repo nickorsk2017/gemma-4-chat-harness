@@ -22,11 +22,14 @@ interface ApiResponse<T> {
   error_text?: string | null;
 }
 
-/** Payload of a successful /api/chat call. */
+/** Payload of a successful /api/chat call.
+ *
+ * The gateway is a pure proxy: this is the agent's OrchestrationResult passed
+ * through unchanged, so the answer field is `answer` (not `reply`) and the agent
+ * supplies the `thread_id`. */
 interface ChatReply {
-  reply: string;
-  subtasks?: number;
-  /** Thread key this turn was stored under (snake_case on the wire). */
+  answer: string;
+  /** Thread key the agent stored this turn under (snake_case on the wire). */
   thread_id?: string;
 }
 
@@ -93,14 +96,14 @@ export async function sendChatMessage(
 
   const envelope = (await response.json()) as ApiResponse<ChatReply>;
 
-  if (envelope.status !== "Success" || !envelope.data?.reply) {
+  if (envelope.status !== "Success" || !envelope.data?.answer) {
     throw new ChatServiceError(
       envelope.error_text ?? "Gateway returned no reply",
     );
   }
 
   return {
-    reply: envelope.data.reply,
+    reply: envelope.data.answer,
     ...(envelope.data.thread_id ? { threadId: envelope.data.thread_id } : {}),
   };
 }

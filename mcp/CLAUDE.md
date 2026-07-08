@@ -1,8 +1,9 @@
 # MCP Agents — Project Rules
 
-Multi-agent system built on **FastMCP**, **LangChain**, **LangGraph**, **LangSmith** (tracing), and **Pydantic** (all latest versions).
-Each agent is an independent MCP server. A `master_orchestrator` fans a user prompt out to
-specialized sub-agents **in parallel**, then merges their results into one answer.
+Multi-agent system built on **FastMCP**, **LangChain** (core + MCP adapters), and **Pydantic** (all latest versions).
+Each agent is an independent MCP server. A `master_orchestrator` runs a **Gemma tool-calling
+loop** over the sub-agents' tools, calling them **in parallel** when independent, then merges
+their results into one answer.
 
 ## Folder structure
 
@@ -38,8 +39,8 @@ local work); it is NOT a shared umbrella package.
 
 - **Language:** Python ≥ 3.11, fully type-hinted. Async-first.
 - **MCP:** `fastmcp` (FastMCP v2). Each `main.py` builds a `FastMCP` instance and exposes tools.
-- **LLM / chains:** `langchain`, `langchain-core`. Model access goes through `langchain` chat models.
-- **Graphs:** `langgraph` for any multi-step / branching agent logic (orchestrator fan-out lives here).
+- **LLM / tools:** `langchain-core` chat models. The orchestrator binds the sub-agents' tools to the model and runs a **tool-calling loop** (the model selects tools; the orchestrator executes them fail-soft and in parallel). Sub-agents are reached as MCP clients via `langchain-mcp-adapters`.
+- **Multi-step logic:** implemented directly in async Python (no graph framework); keep it in `tools/` behind Pydantic contracts.
 - **Validation:** `pydantic` v2 for all domain models and I/O contracts. Never pass around raw dicts across boundaries.
 - **Settings:** `pydantic-settings` `BaseSettings` in every `config.py`, loaded from env / `.env`.
 
@@ -63,7 +64,7 @@ local work); it is NOT a shared umbrella package.
 
 | Agent                | Role                                                                 |
 |----------------------|---------------------------------------------------------------------|
-| `master_orchestrator`| Receives the user prompt, splits it into sub-tasks, calls sub-agent MCP servers in parallel, merges results into one response. |
+| `master_orchestrator`| Receives the user prompt, runs a Gemma tool-calling loop over the sub-agent MCP servers (calling them in parallel when independent), merges results into one response, and keeps per-thread memory. |
 | `web_agent`          | Retrieves live data from the internet (news, weather, general web).  |
 | `doc_analyzer`       | Analyzes documents, primarily PDFs (extract, summarize, Q&A).        |
 | `image_analyzer`     | Analyzes images (describe, detect, OCR).                             |

@@ -1,13 +1,10 @@
-"""Prompts for doc_analyzer."""
+"""Prompts for doc_analyzer. Prompts are data (mcp/CLAUDE.md rule 4)."""
 
-SUMMARIZE_DOC = (
-    "You are a precise document analyst. Given the extracted text of the document "
-    "'{doc}', produce a concise summary followed by at most {max_points} key "
-    "points. Preserve important facts, figures, and conclusions."
-)
-
-ANSWER_DOC = (
-    "You are a document question-answering assistant. Using only the extracted text "
-    "of the document '{doc}', answer the question: '{question}'. Quote the short "
-    "passages that support your answer. If the answer is not present, say so."
+ANALYZE_DOC = (
+    "You are a precise document analyst. You are given the text extracted from a PDF "
+    "document named '{filename}'. Follow the user's instruction using ONLY that text; "
+    "quote short supporting passages where useful, and if the answer is not present, "
+    "say so plainly. Do not invent facts.\n\n"
+    "User instruction:\n{prompt}\n\n"
+    "Extracted document text:\n{text}"
 )

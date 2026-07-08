@@ -37,10 +37,8 @@ class Settings(BaseSettings):
     # "http"  -> connect to an already-running orchestrator MCP server over HTTP.
     orchestrator_mode: OrchestratorMode = "stdio"
 
-    # --- Uploads (chat attachments: images / PDFs) ---
-    # In docker this is a volume shared with the mcp container so sub-agents can
-    # read the saved files by the same path.
-    upload_dir: str = "./uploads"
+    # Attachments now travel inline (base64) to the orchestrator; the gateway no
+    # longer writes uploads to disk, so there is no upload_dir here.
 
     # stdio transport: how to spawn the orchestrator (config, not constants).
     orchestrator_command: str = "python"
@@ -54,7 +52,7 @@ class Settings(BaseSettings):
     # shared: tool name to invoke and the per-request hard timeout.
     # Must exceed the whole LLM chain: planner + slowest sub-agent (see
     # ORCHESTRATOR_SUBAGENT_TIMEOUT_S) + synthesis.
-    orchestrator_tool: str = "orchestrate"
+    orchestrator_tool: str = "start_job"
     # Tool that deletes a conversation thread from the orchestrator's memory.
     orchestrator_delete_tool: str = "delete_thread"
     orchestrator_timeout_s: float = 180.0

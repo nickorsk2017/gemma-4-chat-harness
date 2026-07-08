@@ -1,43 +1,26 @@
-"""master_orchestrator settings, including the sub-agent MCP client registry."""
+"""master_orchestrator settings. Config, not constants (mcp/CLAUDE.md rule 5).
+
+The sub-agent set is discovered from this registry (env-overridable), never a
+hardcoded tool list: tools are fetched live from each configured MCP server.
+"""
 
 from __future__ import annotations
 
-import os
-from typing import Any
-
-from agent_core.llm import DEFAULT_MODEL, NOVITA_BASE_URL
-from pydantic import BaseModel, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# How to reach each sub-agent MCP server (FastMCP stdio spawn spec). The key is
+# the sub-agent name; `python -m <name>.main` launches its server.
+DEFAULT_SUBAGENTS: dict[str, dict[str, object]] = {
+    "web_agent": {"command": "python", "args": ["-m", "web_agent.main"], "transport": "stdio"},
+    "doc_analyzer": {"command": "python", "args": ["-m", "doc_analyzer.main"], "transport": "stdio"},
+    "image_analyzer": {"command": "python", "args": ["-m", "image_analyzer.main"], "transport": "stdio"},
+}
 
-class SubAgentEndpoint(BaseModel):
-    """How to reach one sub-agent's MCP server.
-
-    For local dev the orchestrator spawns each sub-agent over stdio using
-    ``command`` + ``args``. For a networked deploy set ``url`` and the client
-    connects over streamable HTTP instead.
-    """
-
-    name: str
-    command: str = "python"
-    args: list[str] = Field(default_factory=list)
-    url: str | None = None
-
-    def to_connection(self) -> dict[str, Any]:
-        """Map this endpoint to a ``langchain-mcp-adapters`` Connection dict.
-
-        stdio connections pass the parent environment through explicitly: the
-        MCP stdio transport spawns subprocesses with a minimal default env, so
-        without this GEMMA_API_KEY / LANGSMITH_* never reach the sub-agents.
-        """
-        if self.url:
-            return {"url": self.url, "transport": "http"}
-        return {
-            "command": self.command,
-            "args": self.args,
-            "transport": "stdio",
-            "env": dict(os.environ),
-        }
+# Sub-agents whose tools consume the attached FILE. Their tool calls get the raw
+# base64 file injected at dispatch — the model never carries the file bytes.
+DOC_SUBAGENT = "doc_analyzer"
+IMAGE_SUBAGENT = "image_analyzer"
 
 
 class OrchestratorSettings(BaseSettings):
@@ -45,65 +28,43 @@ class OrchestratorSettings(BaseSettings):
         env_prefix="ORCHESTRATOR_", env_file=".env", extra="ignore"
     )
 
-    transport: str = "stdio"
+    transport: str = "stdio"  # server transport for the orchestrator itself
 
-    # HTTP serving (used when transport is "http"/"streamable-http"; the
-    # composed stack sets these via env — config, not constants).
+    # HTTP serving (used when transport is "http"/"streamable-http"; the composed
+    # stack sets ORCHESTRATOR_TRANSPORT=streamable-http and binds 0.0.0.0:8100 so
+    # the gateway can reach it at http://mcp:8100/mcp). Env: ORCHESTRATOR_HTTP_HOST,
+    # ORCHESTRATOR_HTTP_PORT, ORCHESTRATOR_HTTP_ALLOWED_HOSTS.
     http_host: str = "0.0.0.0"
     http_port: int = 8100
-    # Host header values fastmcp's request guard must accept in addition to
-    # localhost defaults — the docker service identity the gateway dials.
+    # Docker service identities the gateway dials; admitted past fastmcp's Host
+    # guard so in-network calls (Host: mcp:8100) don't 421.
     http_allowed_hosts: list[str] = Field(
-        default_factory=lambda: ["mcp", "mcp:8100"]
+        default_factory=lambda: ["mcp:8100", "localhost:8100", "127.0.0.1:8100"]
     )
 
-    # LLM used for task splitting + final synthesis — gemma via Novita's
-    # OpenAI-compatible endpoint. GEMMA_API_KEY (env) is REQUIRED; there is
-    # no mock LLM fallback.
-    llm_provider: str = "novita"
-    llm_model: str = DEFAULT_MODEL
-    llm_base_url: str = NOVITA_BASE_URL
-    llm_api_key: str | None = Field(default=None, validation_alias="GEMMA_API_KEY")
-
-    # Hard cap so one slow sub-agent can't hang the whole request (rule 6).
-    # Sub-agents make real gemma calls over full documents/images — allow for it,
-    # but stay below the gateway's total budget (GATEWAY_ORCHESTRATOR_TIMEOUT_S).
-    subagent_timeout_s: float = 120.0
-
-    # --- Thread memory (LangGraph checkpointer) ---
-    # PostgreSQL DSN for AsyncPostgresSaver (ORCHESTRATOR_DATABASE_URL). When
-    # unset, an in-process InMemorySaver is used: fine for a long-lived dev
-    # server, but cross-request memory in the composed stack needs Postgres.
-    database_url: str | None = None
-    # Caps for what gets injected into prompts from the thread (config, not
-    # constants): last N messages of history, max chars of stored doc text.
-    history_max_messages: int = 10
-    document_max_chars: int = 12000
-
-    # LangSmith tracing — canonical LANGSMITH_* env names (not ORCHESTRATOR_-prefixed).
-    langsmith_tracing: bool = Field(
-        default=False, validation_alias="LANGSMITH_TRACING"
-    )
-    langsmith_api_key: str | None = Field(
-        default=None, validation_alias="LANGSMITH_API_KEY"
-    )
-    langsmith_project: str = Field(
-        default="agent-chat", validation_alias="LANGSMITH_PROJECT"
-    )
+    subagents: dict[str, dict[str, object]] = Field(default_factory=lambda: dict(DEFAULT_SUBAGENTS))
+    doc_subagent: str = DOC_SUBAGENT
+    image_subagent: str = IMAGE_SUBAGENT
 
     @property
-    def subagents(self) -> dict[str, SubAgentEndpoint]:
-        return {
-            "web_agent": SubAgentEndpoint(
-                name="web_agent", args=["-m", "web_agent.main"]
-            ),
-            "doc_analyzer": SubAgentEndpoint(
-                name="doc_analyzer", args=["-m", "doc_analyzer.main"]
-            ),
-            "image_analyzer": SubAgentEndpoint(
-                name="image_analyzer", args=["-m", "image_analyzer.main"]
-            ),
-        }
+    def file_subagents(self) -> set[str]:
+        """Sub-agents whose tools receive the injected file at dispatch."""
+        return {self.doc_subagent, self.image_subagent}
+
+    # Tool-calling loop bound: how many model<->tool rounds before we stop.
+    max_tool_iterations: int = 4
+
+    # Attachment cap (validated agent-side; the gateway forwards raw bytes).
+    max_file_bytes: int = 15 * 1024 * 1024  # 15 MiB
+
+    # Conversation memory cap (message history only; files are not persisted).
+    history_max_messages: int = 20
+
+    # Thread memory backend (LangGraph Postgres checkpointer). REQUIRED: thread
+    # data is read from Postgres only — there is no in-memory fallback. A missing
+    # value raises MemoryConfigError when the store is first built.
+    # Env: ORCHESTRATOR_DATABASE_URL (psycopg conn string, e.g. postgresql://...).
+    database_url: str | None = None
 
 
 settings = OrchestratorSettings()

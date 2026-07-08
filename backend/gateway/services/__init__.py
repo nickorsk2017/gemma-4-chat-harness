@@ -1,23 +1,18 @@
-"""Business logic: orchestrator client + chat service."""
+"""Gateway proxy layer: the agent MCP client + the thin chat proxy service."""
 
-from gateway.services.chat_service import (
-    ChatService,
-    GatewayError,
-    GatewayValidationError,
+from gateway.services.agent_client import (
+    AgentClient,
+    AgentOutcome,
+    McpAgentClient,
+    build_agent_client,
 )
-from gateway.services.orchestrator_client import (
-    HttpMcpOrchestratorClient,
-    OrchestratorClient,
-    StdioMcpOrchestratorClient,
-    build_orchestrator_client,
-)
+from gateway.services.chat_service import ChatService, GatewayError
 
 __all__ = [
     "ChatService",
     "GatewayError",
-    "GatewayValidationError",
-    "OrchestratorClient",
-    "StdioMcpOrchestratorClient",
-    "HttpMcpOrchestratorClient",
-    "build_orchestrator_client",
+    "AgentClient",
+    "AgentOutcome",
+    "McpAgentClient",
+    "build_agent_client",
 ]

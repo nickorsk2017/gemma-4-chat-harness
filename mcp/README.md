@@ -1,16 +1,16 @@
 # mcp-agents
 
-A multi-agent MCP system. A **master orchestrator** receives a user prompt,
-splits it into sub-tasks, dispatches them to specialized sub-agents **in
-parallel**, and merges the results into a single answer.
+A multi-agent MCP system. A **master orchestrator** receives a user prompt and,
+via a **Gemma tool-calling loop**, calls specialized sub-agents (in **parallel**
+when independent) and merges the results into a single answer.
 
-Built on **FastMCP**, **LangChain**, **LangGraph**, and **Pydantic** (latest).
+Built on **FastMCP**, **LangChain** (core + MCP adapters), and **Pydantic** (latest).
 
 ## Agents
 
 | Agent                 | Role |
 |-----------------------|------|
-| `master_orchestrator` | Splits the prompt, calls sub-agents concurrently as MCP clients, merges results. |
+| `master_orchestrator` | Gemma tool-calling loop: calls sub-agents (concurrently when independent) as MCP clients, merges results; keeps thread memory. |
 | `web_agent`           | Live internet data — news, weather, page fetch. |
 | `doc_analyzer`        | Document analysis — PDF extract, summarize, Q&A. |
 | `image_analyzer`      | Image analysis — describe, detect, OCR. |
@@ -34,17 +34,20 @@ envelope + LLM factory) — no agent imports another agent.
 user prompt
      │
      ▼
-master_orchestrator ── LangGraph: plan ─▶ dispatch ─▶ synthesize
-     │                                     │
-     │  (MCP client calls, asyncio.gather) │
-     ├───────────────┬─────────────────────┤
+master_orchestrator ── Gemma tool-calling loop (bind sub-agent tools)
+     │        model picks tools ─▶ run them ─▶ tool results ─▶ model ─▶ answer
+     │  (MCP client calls, asyncio.gather for parallel tool calls)
+     ├───────────────┬─────────────────────┐
      ▼               ▼                      ▼
  web_agent      doc_analyzer          image_analyzer   ← each an MCP server
 ```
 
-The `dispatch` node runs every sub-task with `asyncio.gather` and only returns
-once all resolve. A slow or failing sub-agent is captured as an error result and
-does not block the others.
+The model is bound the sub-agents' tools and decides which to call; independent
+tool calls in one turn run together with `asyncio.gather`. A slow or failing
+sub-agent is captured as an error result (fail-soft envelope) and does not block
+the others. Conversation history and gateway-extracted document text persist per
+thread in the orchestrator's own store (in-memory, or Postgres when
+`ORCHESTRATOR_DATABASE_URL` is set).
 
 ## Install
 
@@ -98,7 +101,7 @@ tool code doesn't change:
 
 - `WEB_AGENT_SEARCH_PROVIDER`, `WEB_AGENT_SEARCH_API_KEY`, `WEB_AGENT_WEATHER_*`
 - `DOC_ANALYZER_*`, `IMAGE_ANALYZER_*`
-- `ORCHESTRATOR_LLM_PROVIDER`, `ORCHESTRATOR_LLM_API_KEY` (planner + synthesis)
+- `GEMMA_API_KEY` (the orchestration model; required — no mock fallback)
 
 ## Conventions
 

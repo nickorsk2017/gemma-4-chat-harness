@@ -18,12 +18,12 @@ describe("chatService (gateway REST)", () => {
 
   it("POSTs the prompt to /api/chat and returns the reply on Success", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ status: "Success", data: { reply: "Hello!", subtasks: 2 } }),
+      jsonResponse({ status: "Success", data: { answer: "Hello!", thread_id: "t1" } }),
     );
 
     const res = await sendChatMessage({ prompt: "hi there" });
 
-    expect(res).toEqual({ reply: "Hello!" });
+    expect(res).toEqual({ reply: "Hello!", threadId: "t1" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toMatch(/\/api\/chat$/);
@@ -34,7 +34,7 @@ describe("chatService (gateway REST)", () => {
 
   it("POSTs multipart form data to /api/chat/files when files are attached", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ status: "Success", data: { reply: "Analyzed!" } }),
+      jsonResponse({ status: "Success", data: { answer: "Analyzed!" } }),
     );
     const file = new File(["%PDF-1.4"], "report.pdf", {
       type: "application/pdf",
@@ -116,7 +116,7 @@ describe("chatService (gateway REST)", () => {
       if ((init as RequestInit).signal?.aborted) {
         return Promise.reject(new DOMException("Aborted", "AbortError"));
       }
-      return Promise.resolve(jsonResponse({ status: "Success", data: { reply: "x" } }));
+      return Promise.resolve(jsonResponse({ status: "Success", data: { answer: "x" } }));
     });
 
     await expect(

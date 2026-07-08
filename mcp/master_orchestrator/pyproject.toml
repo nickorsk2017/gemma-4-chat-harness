@@ -1,37 +1,33 @@
 [project]
 name = "master-orchestrator"
 version = "0.1.0"
-description = "master_orchestrator MCP server — plans, fans out to sub-agent MCP servers, merges results"
+description = "Gemma tool-calling orchestrator over the sub-agent MCP servers."
 requires-python = ">=3.11"
 dependencies = [
+    "agent-core",
     "fastmcp>=2.0.0",
-    "langchain>=1.0.0",
-    "langchain-core>=1.0.0",
-    "langgraph>=1.0.0",
+    "langchain-core>=0.3.0",
+    "langchain-mcp-adapters>=0.1.0",
+    "langgraph>=0.2.0",
     "langgraph-checkpoint-postgres>=2.0.0",
-    "psycopg[binary,pool]>=3.2.0",
-    "langchain-mcp-adapters>=0.2.2",
-    "langsmith>=0.8.16",
+    # AsyncPostgresSaver talks to Postgres via psycopg 3. The `[binary]` extra
+    # bundles libpq inside the wheel so it works on python:3.11-slim without an
+    # apt libpq5 layer; without it psycopg finds no pq wrapper and memory boot
+    # fails ("no pq wrapper available ... libpq library not found").
+    "psycopg[binary]>=3.1",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
-    "agent-core>=0.1.0",
 ]
-
-[project.optional-dependencies]
-dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0", "ruff>=0.5.0"]
 
 [project.scripts]
 master-orchestrator = "master_orchestrator.main:main"
+
+[tool.uv.sources]
+agent-core = { path = "../agent_core", editable = true }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# Flat layout: this pyproject.toml lives inside the package dir (mcp/master_orchestrator/),
-# so map the directory contents to the "master_orchestrator" import package in the wheel.
 [tool.hatch.build.targets.wheel]
-only-include = ["."]
-sources = { "." = "master_orchestrator" }
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
+packages = ["."]

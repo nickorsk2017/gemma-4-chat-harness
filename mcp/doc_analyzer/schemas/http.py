@@ -1,28 +1,25 @@
 """HTTP request / response contracts for doc_analyzer tools.
 
-Requests carry the document TEXT directly (extracted by the gateway and
-injected by the orchestrator's dispatch step) — doc_analyzer never reads files.
+The request carries the user's ``prompt`` and the raw attached ``file`` (base64).
+doc_analyzer owns the parsing: it decodes the PDF with PyPDF, then passes the
+extracted text + prompt to the LLM. ``file`` is optional at the schema level so
+the orchestrator's model can leave it empty (it is injected at dispatch).
 """
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from doc_analyzer.schemas.document import DocAnswer, DocSummary
+from agent_core.files import FilePayload
 from agent_core.envelope import AgentResponse
+from doc_analyzer.schemas.document import DocAnalysis
 
 
-class SummarizeRequest(BaseModel):
-    doc: str = Field(..., description="Document name (thread memory key).")
-    text: str = Field(..., min_length=1, description="Full document text to summarize.")
-    max_points: int = Field(default=5, ge=1, le=20)
+class AnalyzeRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, description="Instruction about the document.")
+    file: FilePayload | None = Field(
+        default=None, description="The attached document (base64); injected at dispatch."
+    )
 
 
-class AskRequest(BaseModel):
-    doc: str = Field(..., description="Document name (thread memory key).")
-    text: str = Field(..., min_length=1, description="Full document text to query.")
-    question: str = Field(..., description="Natural-language question about the document.")
-
-
-SummarizeResponse = AgentResponse[DocSummary]
-AskResponse = AgentResponse[DocAnswer]
+AnalyzeResponse = AgentResponse[DocAnalysis]

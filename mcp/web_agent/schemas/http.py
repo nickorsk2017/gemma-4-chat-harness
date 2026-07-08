@@ -14,7 +14,7 @@ class NewsRequest(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    query: str = Field(..., description="What to search the live web for.")
+    prompt: str = Field(..., description="What to search the live web for.")
     max_results: int = Field(default=5, ge=1, le=10)
 
 

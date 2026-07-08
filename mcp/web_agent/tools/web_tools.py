@@ -2,52 +2,32 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
+from langsmith import traceable
+
 from fastmcp import FastMCP
+from pydantic import Field
 
 from agent_core.envelope import AgentResponse
-from web_agent.schemas.http import (
-    FetchRequest,
-    NewsRequest,
-    SearchRequest,
-    WeatherRequest,
-)
-from web_agent.schemas.web import NewsResult, SearchResult, Weather, WebPage
-from web_agent.tools import providers
+from web_agent.providers import tavily
+from web_agent.schemas.web import SearchResult
 
 AGENT = "web_agent"
 
-
+@traceable("web_agent.tools.providers.register")
 def register(mcp: FastMCP) -> None:
+    @traceable("run search web tool")
     @mcp.tool
-    async def search_web(request: SearchRequest) -> AgentResponse[SearchResult]:
+    async def search_web(
+        prompt: Annotated[str, Field(description="What to search the live web for.")],
+        max_results: Annotated[
+            int, Field(ge=1, le=10, description="How many results to return (1-10).")
+        ] = 5,
+    ) -> AgentResponse[SearchResult]:
         """Live internet search (Tavily): news, current events, fresh facts."""
         try:
-            result = await providers.search_web(request.query, request.max_results)
+            result = await tavily.search_web(prompt, max_results)
             return AgentResponse.ok(AGENT, result)
-        except Exception as exc:  # noqa: BLE001
-            return AgentResponse.fail(AGENT, str(exc))
-
-    @mcp.tool
-    async def get_news(request: NewsRequest) -> AgentResponse[NewsResult]:
-        """Fetch recent news items about a topic."""
-        try:
-            result = await providers.fetch_news(request.query, request.limit)
-            return AgentResponse.ok(AGENT, result)
-        except Exception as exc:  # noqa: BLE001
-            return AgentResponse.fail(AGENT, str(exc))
-
-    @mcp.tool
-    async def get_weather(request: WeatherRequest) -> AgentResponse[Weather]:
-        """Fetch current weather for a location."""
-        try:
-            return AgentResponse.ok(AGENT, await providers.fetch_weather(request.location))
-        except Exception as exc:  # noqa: BLE001
-            return AgentResponse.fail(AGENT, str(exc))
-
-    @mcp.tool
-    async def fetch_url(request: FetchRequest) -> AgentResponse[WebPage]:
-        """Fetch and extract text from a web page."""
-        try:
-            return AgentResponse.ok(AGENT, await providers.fetch_page(request.url))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return AgentResponse.fail(AGENT, str(exc))

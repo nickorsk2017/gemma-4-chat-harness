@@ -2,48 +2,32 @@
 
 from __future__ import annotations
 
-from fastmcp import FastMCP
+from typing import Annotated
 
-from image_analyzer.schemas.http import (
-    DescribeRequest,
-    DetectRequest,
-    OcrRequest,
-)
-from image_analyzer.schemas.image import (
-    Caption,
-    DetectionResult,
-    OcrResult,
-)
-from image_analyzer.tools import providers
+from fastmcp import FastMCP
+from pydantic import Field
+
 from agent_core.envelope import AgentResponse
+from agent_core.files import FilePayload
+from image_analyzer.schemas.image import ImageAnalysis
+from image_analyzer.tools import providers
 
 AGENT = "image_analyzer"
 
 
 def register(mcp: FastMCP) -> None:
     @mcp.tool
-    async def describe_image(request: DescribeRequest) -> AgentResponse[Caption]:
-        """Produce a natural-language caption for an image."""
+    async def analyze_image(
+        prompt: Annotated[
+            str, Field(min_length=1, description="Instruction about the image.")
+        ],
+        file: FilePayload | None = None,
+    ) -> AgentResponse[ImageAnalysis]:
+        """Answer a prompt about the attached image via the multimodal LLM."""
         try:
-            result = await providers.describe_image(request.path)
-            return AgentResponse.ok(AGENT, result)
-        except Exception as exc:  # noqa: BLE001
-            return AgentResponse.fail(AGENT, str(exc))
-
-    @mcp.tool
-    async def detect_objects(request: DetectRequest) -> AgentResponse[DetectionResult]:
-        """Detect objects in an image above a confidence threshold."""
-        try:
-            result = await providers.detect_objects(request.path, request.min_confidence)
-            return AgentResponse.ok(AGENT, result)
-        except Exception as exc:  # noqa: BLE001
-            return AgentResponse.fail(AGENT, str(exc))
-
-    @mcp.tool
-    async def ocr_image(request: OcrRequest) -> AgentResponse[OcrResult]:
-        """Extract text from an image via OCR."""
-        try:
-            result = await providers.ocr_image(request.path, request.lang)
+            if file is None:
+                return AgentResponse.fail(AGENT, "no image file was provided")
+            result = await providers.analyze_image(prompt, file)
             return AgentResponse.ok(AGENT, result)
         except Exception as exc:  # noqa: BLE001
             return AgentResponse.fail(AGENT, str(exc))

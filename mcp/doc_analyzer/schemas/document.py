@@ -5,14 +5,8 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
-class DocSummary(BaseModel):
-    doc: str
-    summary: str
-    key_points: list[str] = Field(default_factory=list)
+class DocAnalysis(BaseModel):
+    """The model's answer to the user's instruction about the document."""
 
-
-class DocAnswer(BaseModel):
-    doc: str
-    question: str
-    answer: str
-    cited_sections: list[str] = Field(default_factory=list)
+    filename: str = Field(..., description="The analyzed document's file name.")
+    answer: str = Field(..., description="The model's response to the prompt.")

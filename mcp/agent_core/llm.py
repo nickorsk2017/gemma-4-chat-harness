@@ -41,7 +41,7 @@ def build_chat_model(
     provider: str = "novita",
     model: str = DEFAULT_MODEL,
     api_key: str | None = None,
-    base_url: str | None = None,
+    base_url: str = NOVITA_BASE_URL,
     temperature: float = DEFAULT_TEMPERATURE,
 ) -> BaseChatModel:
     """Return the single, app-wide Novita chat model.

@@ -2,35 +2,32 @@
 
 from __future__ import annotations
 
-from fastmcp import FastMCP
+from typing import Annotated
 
-from doc_analyzer.schemas.document import DocAnswer, DocSummary
-from doc_analyzer.schemas.http import AskRequest, SummarizeRequest
-from doc_analyzer.tools import providers
+from fastmcp import FastMCP
+from pydantic import Field
+
 from agent_core.envelope import AgentResponse
+from agent_core.files import FilePayload
+from doc_analyzer.schemas.document import DocAnalysis
+from doc_analyzer.tools import providers
 
 AGENT = "doc_analyzer"
 
 
 def register(mcp: FastMCP) -> None:
     @mcp.tool
-    async def summarize_document(request: SummarizeRequest) -> AgentResponse[DocSummary]:
-        """Summarize the given document text into a brief and key points."""
+    async def analyze_document(
+        prompt: Annotated[
+            str, Field(min_length=1, description="Instruction about the document.")
+        ],
+        file: FilePayload | None = None,
+    ) -> AgentResponse[DocAnalysis]:
+        """Answer a prompt about the attached PDF (extracted with PyPDF, then LLM)."""
         try:
-            result = await providers.summarize_document(
-                request.doc, request.text, request.max_points
-            )
-            return AgentResponse.ok(AGENT, result)
-        except Exception as exc:  # noqa: BLE001
-            return AgentResponse.fail(AGENT, str(exc))
-
-    @mcp.tool
-    async def ask_document(request: AskRequest) -> AgentResponse[DocAnswer]:
-        """Answer a natural-language question about the given document text."""
-        try:
-            result = await providers.ask_document(
-                request.doc, request.text, request.question
-            )
+            if file is None:
+                return AgentResponse.fail(AGENT, "no document file was provided")
+            result = await providers.analyze_document(prompt, file)
             return AgentResponse.ok(AGENT, result)
         except Exception as exc:  # noqa: BLE001
             return AgentResponse.fail(AGENT, str(exc))

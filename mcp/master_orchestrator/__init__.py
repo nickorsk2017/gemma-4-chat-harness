@@ -1,2 +1,1 @@
-"""master_orchestrator — splits the user prompt, fans out to sub-agents in
-parallel via their MCP servers, and merges the results into one answer."""
+"""master_orchestrator: a Gemma tool-calling loop over the sub-agent MCP servers."""

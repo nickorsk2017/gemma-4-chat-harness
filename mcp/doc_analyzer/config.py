@@ -14,9 +14,9 @@ class DocAnalyzerSettings(BaseSettings):
     port: int = 8102
     transport: str = "stdio"  # "stdio" | "sse" | "streamable-http"
 
-    # Providers: "mock" ships by default; set real keys to go live.
-    # LLM: gemma via Novita's OpenAI-compatible endpoint. GEMMA_API_KEY
-    # (env) is REQUIRED; there is no mock LLM fallback.
+    # Always real: doc_analyzer decodes the PDF (pypdf) and calls gemma via
+    # Novita's OpenAI-compatible endpoint. GEMMA_API_KEY (env) is REQUIRED;
+    # there is no mock LLM fallback.
     llm_provider: str = "novita"
     llm_model: str = DEFAULT_MODEL
     llm_base_url: str = NOVITA_BASE_URL
