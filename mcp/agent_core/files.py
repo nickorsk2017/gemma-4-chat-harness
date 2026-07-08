@@ -1,13 +1,3 @@
-"""Shared file contract passed *unchanged* from the gateway through the
-orchestrator to the sub-agents.
-
-The gateway never parses attachments any more: it base64-encodes the raw upload
-into a ``FilePayload`` and forwards it. The orchestrator routes on the file's
-kind (Document vs Image) but never decodes it — the chosen sub-agent does that.
-Because the payload crosses two MCP (JSON) boundaries, the file must be a plain,
-JSON-serialisable object: bytes are carried as base64 text.
-"""
-
 from __future__ import annotations
 
 import base64

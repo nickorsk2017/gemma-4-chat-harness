@@ -10,7 +10,7 @@ from pydantic import Field
 from agent_core.envelope import AgentResponse
 from agent_core.files import FilePayload
 from image_analyzer.schemas.image import ImageAnalysis
-from image_analyzer.tools import providers
+from image_analyzer.services.analyze_image import analyze_image as run_image_analysis
 
 AGENT = "image_analyzer"
 
@@ -27,7 +27,7 @@ def register(mcp: FastMCP) -> None:
         try:
             if file is None:
                 return AgentResponse.fail(AGENT, "no image file was provided")
-            result = await providers.analyze_image(prompt, file)
+            result = await run_image_analysis(prompt, file)
             return AgentResponse.ok(AGENT, result)
         except Exception as exc:  # noqa: BLE001
             return AgentResponse.fail(AGENT, str(exc))

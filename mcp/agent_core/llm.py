@@ -1,11 +1,3 @@
-"""Single shared LangChain chat model for the whole application.
-
-Every agent talks to ONE provider: Novita's OpenAI-compatible endpoint
-(``https://api.novita.ai/openai``), authenticated with ``GEMMA_API_KEY``. The app
-consumes it as a LangChain ``BaseChatModel`` (``ChatOpenAI`` pointed at Novita).
-No mock fallback: a missing key raises ``LLMConfigError`` at model-build time.
-"""
-
 from __future__ import annotations
 
 import os
@@ -19,9 +11,6 @@ DEFAULT_MODEL = os.environ.get("GEMMA_MODEL", "google/gemma-4-31b-it")
 # One temperature for the whole app.
 DEFAULT_TEMPERATURE = 0.5
 
-# Per-request hard timeout for LLM HTTP calls. Without it the OpenAI SDK waits
-# up to 600s and retries with backoff — a hanging endpoint then silently eats
-# the whole sub-agent budget. Keep below ORCHESTRATOR_SUBAGENT_TIMEOUT_S.
 DEFAULT_REQUEST_TIMEOUT_S = 90.0
 
 
@@ -38,19 +27,11 @@ _shared_model: BaseChatModel | None = None
 
 def build_chat_model(
     *,
-    provider: str = "novita",
     model: str = DEFAULT_MODEL,
     api_key: str | None = None,
     base_url: str = NOVITA_BASE_URL,
     temperature: float = DEFAULT_TEMPERATURE,
 ) -> BaseChatModel:
-    """Return the single, app-wide Novita chat model.
-
-    The whole application shares ONE provider. ``provider``/``base_url`` and the
-    per-call ``model``/``temperature`` arguments are accepted for backwards
-    compatibility but ignored: every caller gets the same model, built once and
-    cached for the process.
-    """
     global _shared_model
     if _shared_model is not None:
         return _shared_model
@@ -63,10 +44,10 @@ def build_chat_model(
         )
 
     _shared_model = ChatOpenAI(
-        model=DEFAULT_MODEL,
+        model=model,
         api_key=key,
-        base_url=NOVITA_BASE_URL,
-        temperature=DEFAULT_TEMPERATURE,
+        base_url=base_url,
+        temperature=temperature,
         timeout=_request_timeout(),
         max_retries=1,
     )
