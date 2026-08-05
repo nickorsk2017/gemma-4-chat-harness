@@ -4,7 +4,7 @@ import type { ChatMessage, ChatRole, GuardrailInfo } from "@/types/chat";
 import { deleteChatThread, sendChatMessage } from "@/services/chatService";
 
 /** Shown in place of an answer when the turn ran out of time. */
-export const TURN_TIMEOUT_MESSAGE = "Повторите запрос";
+export const TURN_TIMEOUT_MESSAGE = "Please repeat your request";
 
 /**
  * Is this the one failure the user can act on?

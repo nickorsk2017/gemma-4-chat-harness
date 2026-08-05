@@ -1,0 +1,11 @@
+task_id: 2026-08-05-rate-limit
+stage: INIT
+status: PENDING
+iteration: 0
+complexity: HIGH
+next_actor: Planner
+plan_version: 1
+exec_version: 0
+validation_version: 0
+open_issues: []
+last_error: null

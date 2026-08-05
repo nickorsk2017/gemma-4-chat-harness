@@ -95,7 +95,7 @@ export function MessageBubble({
             disabled={retryDisabled}
             className="mt-2 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
           >
-            Повторить
+            Retry
           </button>
         )}
         {animate && !done && (

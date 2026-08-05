@@ -301,3 +301,78 @@ async def test_a_junk_entity_type_falls_back_rather_than_corrupting_the_placehol
     verdict = await pipeline.check(CheckRequest(text="это Иван"))
     assert "<script>" not in verdict.text
     assert "<PERSON>" in verdict.text
+
+
+# --- identifiers of any country (2026-08-05-pii-redaction-orchestration) --------------
+#
+# The judge is stubbed here as everywhere else: these assert what the cascade does with an
+# ID_NUMBER finding, not whether a third-party model produces one. What the model is asked
+# for is pinned separately, in test_prompt_contract.py — a prompt is the only place this
+# behaviour could regress silently.
+
+
+async def test_an_undetectable_passport_number_is_masked_by_the_model(monkeypatch):
+    """A1: the reported defect. The value matches no pattern — 8 digits is not a RU
+    passport — so the deterministic layer cannot see it and the model is the only layer
+    that can."""
+    text = "Мой паспорт 44432423 и мой телефон 353536"
+    stub_judge(
+        monkeypatch,
+        JudgeVerdict(
+            [], {}, False, "",
+            pii=[
+                {"text": "44432423", "type": "ID_NUMBER"},
+                {"text": "353536", "type": "ID_NUMBER"},
+            ],
+        ),
+    )
+    verdict = await pipeline.check(CheckRequest(text=text, source="orchestrator"))
+    assert "44432423" not in verdict.text
+    assert "353536" not in verdict.text
+    assert verdict.text.count("<ID_NUMBER>") == 2
+    assert [r.type for r in verdict.redactions] == ["ID_NUMBER"]
+    assert verdict.redactions[0].count == 2
+
+
+async def test_a_foreign_identifier_is_masked_as_itself_not_as_a_person(monkeypatch):
+    """A2, and the reason ID_NUMBER had to join `_MODEL_PII_TYPES` in the same change:
+    without it this masks correctly but reports the DNI as somebody's name."""
+    stub_judge(
+        monkeypatch,
+        JudgeVerdict([], {}, False, "", pii=[{"text": "12345678Z", "type": "ID_NUMBER"}]),
+    )
+    verdict = await pipeline.check(CheckRequest(text="mi DNI es 12345678Z"))
+    assert verdict.text == "mi DNI es <ID_NUMBER>"
+    assert [r.type for r in verdict.redactions] == ["ID_NUMBER"]
+    assert "ID_NUMBER" in (verdict.notice or "")
+
+
+async def test_a_well_formed_ru_type_still_resolves_deterministically(monkeypatch):
+    """A4: the pattern layer keeps its own entity names and its checksum promotion. The
+    model layer is an addition, not a replacement."""
+    stub_judge(monkeypatch, JudgeVerdict([], {}, False, "", pii=[]))
+    verdict = await pipeline.check(CheckRequest(text="телефон +7 916 123-45-67"))
+    assert [r.type for r in verdict.redactions] == ["PHONE_NUMBER"]
+    assert "+7 916 123-45-67" not in verdict.text
+
+
+async def test_an_ordinary_number_is_left_alone(monkeypatch):
+    """A3: nothing ties these to a person, so the model reports nothing and the cascade
+    invents nothing. The cost of the new instruction is false positives; this is the test
+    that a stray digit run is not one."""
+    text = "заказ 44432423 оформлен в 2024 году, версия 353536"
+    stub_judge(monkeypatch, JudgeVerdict([], {}, False, "", pii=[]))
+    verdict = await pipeline.check(CheckRequest(text=text))
+    assert verdict.text == text
+    assert verdict.redactions == []
+    assert verdict.notice is None
+
+
+async def test_an_identifier_turn_is_refused_when_the_judge_is_down(monkeypatch):
+    """A5: with the model gone there is no layer left that can see this value, so the
+    input path refuses rather than passing it to the answering model."""
+    stub_judge(monkeypatch, None)
+    verdict = await pipeline.check(
+        CheckRequest(text="мой паспорт 44432423", direction=Direction.INPUT)
+    )
+    assert verdict.decision is Decision.BLOCKED

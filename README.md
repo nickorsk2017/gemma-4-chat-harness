@@ -42,6 +42,17 @@ Browser ── Next.js frontend (:3000)
 | `.claude/` | Execution harness: runner, roles, hooks, task artifacts |
 | `docker-compose.yml`, `Makefile` | The whole stack + dev commands |
 
+## Status: demo — no authentication, no authorization
+
+This is a demonstration project. It has **no authentication and no authorization**:
+there is no user, no session, and no owner attached to a thread. Every endpoint is
+open to whoever can reach the port, and `thread_id` is a bearer of nothing — it
+identifies a conversation, it does not protect one.
+
+Concretely, on an exposed deployment any caller can spend the LLM budget on your API
+keys, read any conversation by guessing or replaying its `thread_id`, and delete any
+thread the same way. Run it on localhost or behind your own authenticating proxy.
+
 ## Quick start
 
 ```bash
