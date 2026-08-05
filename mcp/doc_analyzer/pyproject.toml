@@ -2,7 +2,7 @@
 name = "doc-analyzer"
 version = "0.1.0"
 description = "doc_analyzer MCP server — document analysis (PyPDF extract + LLM Q&A/summary over an attached PDF)"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "fastmcp>=2.0.0",
     "langchain-core>=0.3.0",

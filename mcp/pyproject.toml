@@ -1,21 +1,34 @@
 # Dev aggregator ONLY. Each agent is an independent distribution in its own top-level
 # folder under mcp/ (folder name == import root); this file does NOT build a shared
-# package. It exists so a developer can install the whole fleet editable in one step for
-# local work. Install order matters: agent_core first.
+# package. It exists so a developer can install the whole fleet in one step for local
+# work. Install order matters: agent_core first.
 #
-#   pip install -e agent_core
-#   pip install -e web_agent -e doc_analyzer \
-#                -e image_analyzer -e master_orchestrator
+#   make dev-install-mcp          # from the repo root — the supported path
+#
+# or by hand, from mcp/:
+#
+#   pip install ./agent_core
+#   pip install ./guardrails ./web_agent ./doc_analyzer \
+#               ./image_analyzer ./master_orchestrator
+#
+# NOT editable, on purpose: every agent uses the flat layout
+# `[tool.hatch.build.targets.wheel] sources = { "." = "<pkg>" }`, and hatchling refuses
+# to build that in dev mode ("Dev mode installations are unsupported when any path
+# rewrite in the `sources` option changes a prefix rather than removes it"). A regular
+# install behaves like an editable one anyway: the processes run with cwd=mcp/, so
+# `mcp/<agent>/` is imported ahead of the site-packages copy. Re-install after changing
+# a dependency, not after changing code.
 #
 # In CI/prod, install only the package(s) you deploy.
 
 [project]
 name = "mcp-agents-dev"
 version = "0.1.0"
-description = "Dev meta-package: editable-installs the independent agent distributions in mcp/<name>"
-requires-python = ">=3.11"
+description = "Dev meta-package: installs the independent agent distributions in mcp/<name> for local work"
+requires-python = ">=3.14"
 dependencies = [
     "agent-core",
+    "guardrails",
     "web-agent",
     "doc-analyzer",
     "image-analyzer",
@@ -25,9 +38,12 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0", "ruff>=0.5.0"]
 
+# Path sources for `uv sync`. `editable` is deliberately absent (defaults to false) —
+# see the flat-layout note at the top of this file.
 [tool.uv.sources]
-agent-core          = { path = "agent_core", editable = true }
-web-agent           = { path = "web_agent", editable = true }
-doc-analyzer        = { path = "doc_analyzer", editable = true }
-image-analyzer      = { path = "image_analyzer", editable = true }
-master-orchestrator = { path = "master_orchestrator", editable = true }
+agent-core          = { path = "agent_core" }
+guardrails          = { path = "guardrails" }
+web-agent           = { path = "web_agent" }
+doc-analyzer        = { path = "doc_analyzer" }
+image-analyzer      = { path = "image_analyzer" }
+master-orchestrator = { path = "master_orchestrator" }

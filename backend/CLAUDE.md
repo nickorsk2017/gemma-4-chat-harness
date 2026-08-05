@@ -54,7 +54,7 @@ so `gateway.main:app` resolves directly with no nested wrapper directory.
    `orchestrate` tool and maps the returned envelope. It never imports `mcp/` packages.
 
 ## Stack conventions
-- Python ≥ 3.11, async-first, fully type-hinted.
+- Python ≥ 3.14, async-first, fully type-hinted.
 - FastAPI (latest), Pydantic v2, pydantic-settings, SQLAlchemy 2.x, fastmcp (MCP client),
   uvicorn — pinned in `pyproject.toml`.
 

@@ -3,7 +3,7 @@
 # Installs the hatch project (both `_common` and `gateway` import packages) plus the
 # sqlite extra, then runs the app factory `gateway.main:app`.
 
-FROM python:3.11-slim AS runtime
+FROM python:3.14-slim AS runtime
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

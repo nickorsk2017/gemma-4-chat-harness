@@ -4,6 +4,11 @@
 __pycache__/
 *.py[cod]
 .venv-gemma/
+backend/.venv/
+mcp/.venv/
+
+# Docker-free local stack (`make dev`): pid files + service logs
+.dev/
 
 # Secrets — never commit real keys
 .env
@@ -12,3 +17,5 @@ __pycache__/
 
 # Chat attachments saved by the gateway (local dev)
 uploads/
+
+_to_delete

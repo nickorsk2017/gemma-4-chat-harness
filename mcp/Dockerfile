@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 # MCP — master_orchestrator plus its three sub-agents (web / doc / image).
-# The orchestrator fans out to the sub-agents in-process over stdio, so all four
+# The orchestrator fans out to the sub-agents in-process over stdio, so all
 # distributions are installed into this single image. Install order matters:
 # `agent_core` is a dependency of every agent and goes first.
 
-FROM python:3.11-slim AS runtime
+FROM python:3.14-slim AS runtime
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

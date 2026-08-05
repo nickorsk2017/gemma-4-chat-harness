@@ -2,7 +2,7 @@
 name = "master-orchestrator"
 version = "0.1.0"
 description = "Gemma tool-calling orchestrator over the sub-agent MCP servers."
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "agent-core",
     "fastmcp>=2.0.0",
@@ -11,7 +11,7 @@ dependencies = [
     "langgraph>=0.2.0",
     "langgraph-checkpoint-postgres>=2.0.0",
     # AsyncPostgresSaver talks to Postgres via psycopg 3. The `[binary]` extra
-    # bundles libpq inside the wheel so it works on python:3.11-slim without an
+    # bundles libpq inside the wheel so it works on python:3.14-slim without an
     # apt libpq5 layer; without it psycopg finds no pq wrapper and memory boot
     # fails ("no pq wrapper available ... libpq library not found").
     "psycopg[binary]>=3.1",
@@ -22,8 +22,10 @@ dependencies = [
 [project.scripts]
 master-orchestrator = "master_orchestrator.main:main"
 
+# Not editable: agent_core uses a flat layout whose `sources` rewrite hatchling
+# refuses to build in dev mode (see mcp/pyproject.toml for the full note).
 [tool.uv.sources]
-agent-core = { path = "../agent_core", editable = true }
+agent-core = { path = "../agent_core" }
 
 [build-system]
 requires = ["hatchling"]
