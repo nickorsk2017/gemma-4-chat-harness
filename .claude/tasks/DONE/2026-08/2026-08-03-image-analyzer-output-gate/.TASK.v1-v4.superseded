@@ -1,0 +1,149 @@
+# TASK — 2026-08-03-image-analyzer-output-gate
+owner: Engineer
+immutable: true
+
+## Context
+`image_analyzer` is the only agent that touches an LLM and never calls the gate.
+`services/analyze_service.py` sends prompt + image data-URL to the multimodal model and
+returns `ImageAnalysis(filename, answer)` straight to `tools/analyze_image.py`, which wraps
+it in `AgentResponse.ok`. The model's description of the image therefore leaves the agent
+ungated.
+
+The orchestrator's `check_output` (orchestrator.py:119) gates the *merged* answer, not the
+sub-task output: the raw `answer` is appended to `messages` as a `ToolMessage` and is in the
+model's context before any gate sees it, and a sub-agent result may be surfaced or logged
+without passing through the merge. `doc_analyzer` set the precedent that a sub-agent owns its
+own gate call (`analyze_service.py:62`, `check_input` on extracted PDF text); this task is the
+output-side counterpart for images.
+
+Scope decision (Engineer): output path only. No `check_input` on `prompt` (already gated at
+the orchestrator's input gate), no gating of text recognised inside the image.
+
+## Requirements
+- R1: `image_analyzer` MUST call `agent_core.guardrails.check_output` on the model's answer
+  before that answer leaves the agent, with `source="image_analyzer"` and the thread id when
+  one is available.
+- R2: The gate call MUST sit in `services/analyze_service.py`, between the LLM call and the
+  returned `ImageAnalysis` — not in `tools/` (mcp/CLAUDE.md rule 3: tools stay thin).
+- R3: On `decision == blocked`, `ImageAnalysis.answer` MUST be replaced by one fixed refusal
+  sentence that names no offending content and echoes no part of the model output. The
+  sentence MUST be a new module-level constant in `agent_core/guardrails.py`, alongside
+  `DOCUMENT_REJECTED` / `REFUSAL_OUTPUT`, not a literal inside `image_analyzer`.
+- R4: The gate is used as a binary allow/block verdict. On `allowed`, the model's original
+  answer is returned unchanged — `verdict.text`, `verdict.redactions` and `verdict.notice`
+  MUST NOT rewrite the answer.
+- R5: A blocked answer MUST still return `status=ok` at the MCP boundary (mcp/CLAUDE.md rule
+  7, fail soft). Blocking is a verdict, not an agent error; `AgentResponse.fail` stays
+  reserved for failures.
+- R6: No change to the shared fail policy or retry ladder in `agent_core/guardrails.py`.
+  `check_output` is fail-open after the ladder; `image_analyzer` inherits that as-is and MUST
+  NOT add its own retry, timeout or fallback around the call.
+- R7: `image_analyzer/config.py` MUST expose the guardrails settings the agent's stack needs,
+  on the same terms as `doc_analyzer/config.py` (`GUARDRAILS_URL`, `GUARDRAILS_TIMEOUT_S` env
+  aliases, same defaults). No new hardcoded URL or timeout.
+- R8: No new runtime dependency. `image_analyzer` reaches the gate through `agent_core` only
+  and imports no other agent (mcp/CLAUDE.md rule 1a).
+
+## Acceptance
+- A1: With a stubbed gate returning `allowed`, `analyze_image` returns the model's answer
+  byte-identical to the pre-change behaviour.
+- A2: With a stubbed gate returning `blocked`, the returned `ImageAnalysis.answer` is exactly
+  the R3 constant, contains no substring of the model output, and the envelope status is `ok`.
+- A3: With a stubbed gate returning `allowed` *with* redactions and a rewritten `text`, the
+  returned answer is the model's original answer (R4).
+- A4: With the gate unreachable, `analyze_image` returns the model's answer and the
+  ungated-release incident is logged by `agent_core.guardrails` — the agent adds no second
+  error path (R6).
+- A5: A test file under `mcp/tests/` covers A1–A4 and passes; the existing gate suites
+  (`test_guardrail_gates.py`, `test_doc_analyzer_gate.py`, `test_gate_outage.py`) still pass.
+- A6: `git diff` touches no file under `doc_analyzer/`, `web_agent/` or `master_orchestrator/`,
+  and the only `agent_core/guardrails.py` change is the added constant.
+
+## Constraints
+- Frameworks stay pinned to their current versions.
+- `agent_core.guardrails` mirrors the gate's contracts and never imports the `guardrails`
+  distribution — the new constant follows the same rule.
+- The refusal sentence is English, consistent with `REFUSAL_OUTPUT` / `DOCUMENT_REJECTED`.
+- PLAN.md MUST record how the thread id reaches `analyze_service` (R1): the current
+  `analyze_image(prompt, file)` signature carries none, and whether to thread it through
+  `tools/analyze_image.py` or to pass `thread_id=None` is an architectural choice, not an
+  implementation detail.
+
+## Amendment v2 — Engineer, after VALIDATION v1 (issue V1)
+Original requirements above stand except where a line below names one. V1 is closed by
+capping the loop and tuning the gate's own budget — **not** by a new mechanism: no circuit
+breaker, no shared deadline object, no per-turn state. Both levers already exist.
+
+- R9: `master_orchestrator.config.max_tool_iterations` default becomes `2`. This is the one
+  edit under `master_orchestrator/` this task is permitted to make.
+- R10: the remaining margin is taken from the gate's own retry budget
+  (`GUARDRAILS_RETRY_ATTEMPTS`, `GUARDRAILS_TIMEOUT_S`, `GUARDRAILS_RETRY_BASE_S`,
+  `GUARDRAILS_RETRY_FACTOR`, `GUARDRAILS_OUTPUT_DEADLINE_S`). Values are chosen by PLAN and
+  declared where the stacks already read them — never hardcoded into
+  `agent_core/guardrails.py`, whose defaults and fail policy R6 still protects.
+- R11: PLAN MUST state the resulting worst-case turn duration under a total gate outage as a
+  number, with its arithmetic, and show it clears `gateway.orchestrator_timeout_s` (180.0)
+  with the vision and merge LLM calls counted, not ignored.
+- A6 (amended): the permitted `master_orchestrator/` change is R9's single default; every
+  other file under `master_orchestrator/`, and all of `doc_analyzer/` and `web_agent/`,
+  stays untouched. Env/compose declaration files needed by R10 are in scope.
+- A7: with R9 + R10 applied, the documented worst case of R11 is below 180.0 s.
+- A8: the R10 values are declared in the files both stacks read (compose env + `.env.example`),
+  so neither stack depends on a value that exists only in the other.
+
+## Amendment v3 — Engineer, after EXEC v2 (conflict C1)
+C1 is resolved by option (a): the code defaults move with the declared ones. R10's
+prohibition on editing `agent_core/guardrails.py` is **lifted for the five ladder defaults
+only** — the fail policy, the ladder's structure and every other line of that module stay
+under R6.
+
+- R12: `GUARDRAILS_TIMEOUT_S` becomes **15** (was 10). The gate's judge budget is 8 s and
+  10 s left only 2 s for transport and model overhead, which is thin enough that a healthy
+  slow verdict reads as an outage — the failure D9 argues against.
+- R13: the defaults in `agent_core/guardrails.py` MUST equal the values in
+  `mcp/.env.example`, which is the canonical declaration. A process that sets no
+  `GUARDRAILS_*` MUST behave exactly like one that sets all of them. This is what closes C1:
+  the docker-free stack, which sets none, is the stack the arithmetic targets.
+- R14: `GUARDRAILS_OUTPUT_DEADLINE_S` MUST stay above one complete ladder. It is a ceiling on
+  the phase, and a deadline below the ladder it bounds is not a guard — it is a number that
+  can only ever mislead. PLAN sets it from R12's new arithmetic.
+- R15: the three declaration sites — `agent_core/guardrails.py` defaults,
+  `docker-compose.yml`, `mcp/.env.example` — MUST agree value for value after this change.
+- A7 (amended): the worst case of R11 is recomputed with R12's 15 s and re-stated. If it no
+  longer clears 180 s, PLAN says so plainly rather than adjusting a different knob to force
+  the number — an honest figure above the ceiling is a finding, not a failure to hide.
+- A9: with the environment cleared, the ladder computed from `agent_core`'s own defaults
+  equals the ladder computed from `mcp/.env.example` (this is what `tests/test_gate_budget.py`
+  already asserts; it must go green without its assertions being weakened).
+
+## Amendment v4 — Engineer, budget policy replaced
+The summed-worst-case accounting (R11, A7, PLAN D11) is **withdrawn**. It assumed every gate
+call in a turn hangs simultaneously, which is not the failure mode being designed for. The
+budget is now stated per call, and the turn is bounded by a ceiling plus a user-visible retry
+rather than by arithmetic.
+
+- R16: the gate's budget is **per call**: 15 s per attempt, at most 2 attempts, so one gate
+  call is bounded by ~30 s. No summing across the calls in a turn, and no acceptance criterion
+  derived from such a sum.
+- R17: **no progressive backoff.** `GUARDRAILS_RETRY_FACTOR` becomes `1` — the gap between the
+  two attempts is flat, not 2x/4x/8x. With two attempts the ladder is one gap wide anyway; the
+  factor exists only to be misread later.
+- R18: `GUARDRAILS_OUTPUT_DEADLINE_S` is set from R16's per-call bound (R14 still applies: it
+  must sit above one complete ladder), not from any turn-level figure.
+- R11 (withdrawn), A7 (withdrawn): PLAN v3 MUST delete D11's turn table rather than update it,
+  and record why the accounting was dropped. It must not be silently left in place.
+- A10: `agent_core` defaults, `docker-compose.yml` and `mcp/.env.example` state
+  `TIMEOUT_S=15`, `RETRY_ATTEMPTS=2`, `RETRY_FACTOR=1`, and a deadline satisfying R14 —
+  identical in all three (R13, R15 stand).
+
+Note for PLAN, not a requirement: the flat gap is `GUARDRAILS_RETRY_BASE_S`. At `1` the ladder
+is 15 + 1 + 15 = 31 s, one second over the 30 s R16 describes. Setting the gap to 0 would hit
+30 s exactly but makes the retry useless for the case it exists for — a gate that is
+restarting refuses instantly and needs a moment before it can answer. PLAN chooses and states
+which of the two it takes.
+
+## Out of scope — routed to a separate task
+The 66 s ceiling for the gateway and the mcp orchestrator, and the "Повторите запрос" retry
+affordance shown when a chain exceeds it, are NOT part of this task. They change
+`backend/_common/env/settings.py`, both stacks' declarations, the gateway's error contract and
+the frontend. They get their own task; this one stops at the gate's own budget.

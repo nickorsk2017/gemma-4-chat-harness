@@ -1,0 +1,11 @@
+task_id: 2026-08-02-injection-reply-backoff
+stage: DONE
+status: PASS
+iteration: 0
+complexity: HIGH
+next_actor: none
+plan_version: 2
+exec_version: 6
+validation_version: 2
+open_issues: []
+last_error: null

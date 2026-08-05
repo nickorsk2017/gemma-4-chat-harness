@@ -1,0 +1,25 @@
+# LOG — 2026-08-02-injection-reply-backoff
+- 2026-08-02T17:32 Engineer INIT created, complexity=HIGH, next_actor=Planner
+- 2026-08-02T17:38 Engineer wrote TASK.md (R1-R11, A1-A9); stage INIT, next_actor=Planner
+- 2026-08-02T17:43 Engineer amended TASK.md v2: R8 superseded (raise gateway ceiling), R7 amended (retry transport + 5xx)
+- 2026-08-02T17:54 Planner PLAN.md v1 written (D1-D8, 6 risks, 9 steps); stage=PLANNED, plan_version=1, next_actor=Engineer (HIGH approval)
+- 2026-08-02T18:37 Engineer amended TASK.md v3 at the HIGH gate: plan NOT approved (A3-1..A3-6); next_actor=Planner for plan_version 2
+- 2026-08-02T18:45 Engineer amended TASK.md v4: A4-1 single pin >=3.12,<3.14 repo-wide; A4-2 confirms A3-2. next_actor stays Planner
+- 2026-08-02T19:16 Engineer amended TASK.md v5: A5-1 document surface is input-only and binary; no cleaning on documents
+- 2026-08-02T19:21 Planner PLAN.md v2 (D9-D17; D1-D3 withdrawn); plan_version=2, next_actor=Engineer (HIGH approval)
+- 2026-08-02T19:27 Engineer APPROVED plan v2 (TASK.md v6: A6-1..A6-4); stage=APPROVED, next_actor=Executor
+- 2026-08-02T19:32 Executor EXEC.md v1: PLAN step 0 (pins >=3.12,<3.14, base images 3.12, Makefile range check, docs). NOT verified: no install/build/test possible here. stage stays APPROVED
+- 2026-08-02T20:26 Engineer TASK.md v7 (A7-1 English copy). Executor EXEC.md v2: step 4 applied (review deleted, disclaimer, A7-1). py_compile clean; suites not run. stage stays APPROVED
+- 2026-08-02T22:52 Executor EXEC.md v3: steps 1+5 applied (mcp/guardrails as MCP agent, HttpServer in agent_core, MCP client + retry ladder). py_compile clean; suites not run. stage stays APPROVED
+- 2026-08-02T23:47 Executor EXEC.md v4: steps 2,3,7,8,9 applied. All PLAN v2 steps written; nothing executed. stage=EXECUTED, next_actor=Validator
+- 2026-08-02T23:52 Validator VALIDATION.md v1: static pass only. Verdict WITHHELD (no suite executed); 3 defects found by reading and fixed. stage stays EXECUTED, next_actor stays Validator
+- 2026-08-03T00:11 Validator: dev-install guard fired on py3.14.3 (correct). PyPI checked: blocker is thinc/spacy latest, not the whole stack. Recorded in VALIDATION.md
+- 2026-08-03T00:13 Validator V-1/V-2 from first test runs: guardrails missing from dev-install and from `make dev`; both fixed in Makefile
+- 2026-08-03T00:15 Validator: R-7 concurrency reported DONE by Engineer; recorded as attestation, figure still outstanding
+- 2026-08-03T00:18 Validator V-3: A4-1 premise stale — presidio 2.2.364 declares py>=3.14 support and excludes spacy 3.8.14; downgrade avoidable. Engineer decision recorded as open
+- 2026-08-03T00:22 Engineer TASK.md v8 (A8-1: revert A4-1 to >=3.14, presidio floor 2.2.364). Executor EXEC.md v5 applied. exec_version=5
+- 2026-08-03T00:48 Engineer TASK.md v9 (A9-1: spaCy+presidio out; structured=regex+checksum, unstructured=model). Executor EXEC.md v6. exec_version=6
+- 2026-08-03T02:46 Validator V-4: presidio-free pii.py had 2 regressions (checksum promotion lost, patterns ate trailing space); both fixed, covered by new tests
+- 2026-08-03T03:04 Validator VALIDATION.md v2: PASS on Engineer decision, scope stated; stage=VALIDATED status=PASS
+- 2026-08-03T03:04 Engineer closing: stage=DONE status=PASS, open_issues empty
+- 2026-08-03T03:04 Engineer CLOSED done=True; archived to tasks/DONE/2026-08
