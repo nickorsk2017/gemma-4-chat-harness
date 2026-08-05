@@ -28,13 +28,21 @@ class ChatService:
         self._client = client
 
     async def reply(
-        self, prompt: str, file: FilePayload | None = None, thread_id: str | None = None
+        self,
+        prompt: str,
+        file: FilePayload | None = None,
+        thread_id: str | None = None,
+        is_retry: bool = False,
     ) -> AgentOutcome:
         """Forward the prompt (and optional file) to the agent, unchanged."""
-        return await self._client.send(prompt, file, thread_id)
+        return await self._client.send(prompt, file, thread_id, is_retry)
 
     async def reply_with_files(
-        self, prompt: str, files: list[UploadFile], thread_id: str | None = None
+        self,
+        prompt: str,
+        files: list[UploadFile],
+        thread_id: str | None = None,
+        is_retry: bool = False,
     ) -> AgentOutcome:
         """Base64-encode the (single) upload as transport, then forward.
 
@@ -42,7 +50,7 @@ class ChatService:
         agent's concern. Only the multipart->base64 conversion is transport.
         """
         file = await self._encode(files)
-        return await self.reply(prompt, file, thread_id)
+        return await self.reply(prompt, file, thread_id, is_retry)
 
     async def delete_thread(self, thread_id: str) -> AgentOutcome:
         """Proxy a thread deletion to the agent."""

@@ -23,6 +23,10 @@ from fastmcp import Client
 from _common.env import Settings
 from gateway.schemas.chat import FilePayload
 
+# Mirrored, not imported: the gateway may not import mcp/ packages (backend rule 7).
+# Kept in step with master_orchestrator.services.orchestrator.TURN_TIMEOUT_CODE.
+TURN_TIMEOUT_CODE = "turn_timeout"
+
 
 class AgentOutcome(BaseModel):
     """Normalized transport result of one agent call.
@@ -35,6 +39,12 @@ class AgentOutcome(BaseModel):
     ok: bool
     data: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
+    error_code: str | None = Field(
+        default=None,
+        description="Machine-readable failure kind, forwarded from the agent envelope's "
+        "meta.code or set here for the gateway's own timeout. Clients branch on this; "
+        "`error` is prose and is not a contract.",
+    )
 
 
 class AgentClient(Protocol):
@@ -45,6 +55,7 @@ class AgentClient(Protocol):
         prompt: str,
         file: FilePayload | None = None,
         thread_id: str | None = None,
+        is_retry: bool = False,
     ) -> AgentOutcome: ...
 
     async def delete_thread(self, thread_id: str) -> AgentOutcome: ...
@@ -73,7 +84,11 @@ def _to_outcome(payload: Any, *, expect_data: bool) -> AgentOutcome:
     if not isinstance(payload, dict):
         return AgentOutcome(ok=False, error="malformed agent payload")
     if payload.get("status") == "error":
-        return AgentOutcome(ok=False, error=payload.get("error") or "agent error")
+        meta = payload.get("meta")
+        code = meta.get("code") if isinstance(meta, dict) else None
+        return AgentOutcome(
+            ok=False, error=payload.get("error") or "agent error", error_code=code
+        )
     data = payload.get("data")
     if expect_data and not isinstance(data, dict):
         return AgentOutcome(ok=False, error="empty agent payload")
@@ -89,7 +104,11 @@ async def _call_tool(
                 result = await client.call_tool(tool, arguments)
         return _extract(result)
     except TimeoutError:
-        return AgentOutcome(ok=False, error="agent timed out")
+        # The backstop path. It must carry the SAME code the agent's own budget uses,
+        # or the UI degrades to a generic failure exactly when the system is worst off.
+        return AgentOutcome(
+            ok=False, error="agent timed out", error_code=TURN_TIMEOUT_CODE
+        )
     except Exception as exc:  # noqa: BLE001 - fail soft across the boundary
         return AgentOutcome(ok=False, error=str(exc))
 
@@ -117,12 +136,15 @@ class McpAgentClient:
         prompt: str,
         file: FilePayload | None = None,
         thread_id: str | None = None,
+        is_retry: bool = False,
     ) -> AgentOutcome:
         request: dict[str, Any] = {"prompt": prompt}
         if file is not None:
             request["file"] = file.model_dump()
         if thread_id:
             request["thread_id"] = thread_id
+        if is_retry:
+            request["is_retry"] = True
         payload = await _call_tool(
             self._target, self._tool, self._timeout, {"request": request}
         )

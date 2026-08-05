@@ -40,6 +40,12 @@ class ChatRequest(BaseModel):
         "AGENT generates one and returns it. Send it back on follow-ups so the "
         "agent keeps history.",
     )
+    is_retry: bool = Field(
+        default=False,
+        description="True when the client re-sends a turn that ran out of time. "
+        "Forwarded unchanged; the agent marks the stored message so a retry is not "
+        "read as a second question.",
+    )
 
 
 class AgentData(BaseModel):

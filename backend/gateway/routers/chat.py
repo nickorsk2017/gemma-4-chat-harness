@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from _common.env import Settings, get_settings
 from _common.schemas import ApiResponse
 from gateway.schemas.chat import AgentData, ChatRequest, DeleteThreadReply
-from gateway.services.agent_client import AgentOutcome
+from gateway.services.agent_client import TURN_TIMEOUT_CODE, AgentOutcome
 from gateway.services.chat_service import ChatService
 from gateway.services.agent_client import build_agent_client
 
@@ -27,18 +27,24 @@ def get_chat_service(settings: Settings = Depends(get_settings)) -> ChatService:
     return ChatService(build_agent_client(settings))
 
 
-def _fail(status_code: int, error_text: str) -> JSONResponse:
+def _fail(
+    status_code: int, error_text: str, error_code: str | None = None
+) -> JSONResponse:
     """Failed envelope with an honest HTTP status code."""
     return JSONResponse(
         status_code=status_code,
-        content=ApiResponse.fail(error_text).model_dump(mode="json"),
+        content=ApiResponse.fail(error_text, error_code).model_dump(mode="json"),
     )
 
 
 def _reply(outcome: AgentOutcome) -> JSONResponse | ApiResponse[AgentData]:
     """Map an agent outcome to the REST envelope (proxy passthrough of data)."""
     if not outcome.ok:
-        return _fail(502, outcome.error or "agent failed")
+        # 504 for the one failure the client can act on: the turn ran out of time and
+        # re-sending it is a sensible thing to offer. Everything else stays 502.
+        if outcome.error_code == TURN_TIMEOUT_CODE:
+            return _fail(504, outcome.error or "the turn ran out of time", TURN_TIMEOUT_CODE)
+        return _fail(502, outcome.error or "agent failed", outcome.error_code)
     return ApiResponse.ok(AgentData(**outcome.data))
 
 
@@ -49,7 +55,9 @@ async def chat(
 ):
     """Forward a user prompt to the agent and return its answer."""
     try:
-        outcome = await service.reply(request.prompt, request.file, request.thread_id)
+        outcome = await service.reply(
+            request.prompt, request.file, request.thread_id, request.is_retry
+        )
         return _reply(outcome)
     except Exception as exc:  # noqa: BLE001 - structured, never an unhandled 500
         return _fail(500, f"unexpected error: {exc}")
@@ -63,11 +71,14 @@ async def chat_with_files(
         str | None,
         Form(description="Conversation thread key; omit to start a new thread."),
     ] = None,
+    is_retry: Annotated[
+        bool, Form(description="True when re-sending a turn that ran out of time.")
+    ] = False,
     service: ChatService = Depends(get_chat_service),
 ):
     """Forward a prompt with an image/PDF attachment to the agent."""
     try:
-        outcome = await service.reply_with_files(prompt, files, thread_id)
+        outcome = await service.reply_with_files(prompt, files, thread_id, is_retry)
         return _reply(outcome)
     except Exception as exc:  # noqa: BLE001 - structured, never an unhandled 500
         return _fail(500, f"unexpected error: {exc}")

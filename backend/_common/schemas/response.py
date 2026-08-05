@@ -38,13 +38,25 @@ class ApiResponse(BaseModel, Generic[T]):
     error_text: str | None = Field(
         default=None, description="Human-readable error present on failure."
     )
+    error_code: str | None = Field(
+        default=None,
+        description="Machine-readable failure kind (e.g. 'turn_timeout'). Optional and "
+        "additive: clients branch on this instead of parsing error_text.",
+    )
 
     @classmethod
     def ok(cls, data: T) -> "ApiResponse[T]":
         """Build a successful envelope."""
-        return cls(status=ResponseStatus.SUCCESS, data=data, error_text=None)
+        return cls(
+            status=ResponseStatus.SUCCESS, data=data, error_text=None, error_code=None
+        )
 
     @classmethod
-    def fail(cls, error_text: str) -> "ApiResponse[T]":
+    def fail(cls, error_text: str, error_code: str | None = None) -> "ApiResponse[T]":
         """Build a failed envelope (no payload)."""
-        return cls(status=ResponseStatus.FAILED, data=None, error_text=error_text)
+        return cls(
+            status=ResponseStatus.FAILED,
+            data=None,
+            error_text=error_text,
+            error_code=error_code,
+        )

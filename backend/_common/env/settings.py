@@ -50,12 +50,13 @@ class Settings(BaseSettings):
     orchestrator_mcp_url: str = "http://127.0.0.1:8100/mcp"
 
     # shared: tool name to invoke and the per-request hard timeout.
-    # Must exceed the whole LLM chain: planner + slowest sub-agent (see
-    # ORCHESTRATOR_SUBAGENT_TIMEOUT_S) + synthesis.
+    # 66s is the outermost backstop for one turn. The orchestrator's own budget
+    # (ORCHESTRATOR_TURN_BUDGET_S, 60s) fires first and is what produces the typed
+    # `turn_timeout` the UI turns into a retry; this catches a process wedged below it.
     orchestrator_tool: str = "start_job"
     # Tool that deletes a conversation thread from the orchestrator's memory.
     orchestrator_delete_tool: str = "delete_thread"
-    orchestrator_timeout_s: float = 180.0
+    orchestrator_timeout_s: float = 66.0
     # Thread deletion is a checkpointer call, not an LLM chain — keep it short.
     orchestrator_delete_timeout_s: float = 30.0
 
