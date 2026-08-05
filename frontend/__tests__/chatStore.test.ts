@@ -1,4 +1,8 @@
-import { CHAT_STORAGE_KEY, useChatStore } from "@/stores/chatStore";
+import {
+  CHAT_STORAGE_KEY,
+  TURN_TIMEOUT_MESSAGE,
+  useChatStore,
+} from "@/stores/chatStore";
 import { deleteChatThread, sendChatMessage } from "@/services/chatService";
 
 jest.mock("@/services/chatService", () => ({
@@ -179,5 +183,79 @@ describe("chatStore.clearThread", () => {
     expect(state.threadId).toBe("t-1");
     expect(state.error).toBe("thread deletion failed");
     expect(state.isSending).toBe(false);
+  });
+});
+
+describe("chatStore — a turn that ran out of time", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useChatStore.getState().reset();
+    sendChatMessageMock.mockReset();
+  });
+
+  /** What the service throws when the gateway names the failure. */
+  function timeoutError() {
+    return Object.assign(new Error("the turn ran out of time"), {
+      code: "turn_timeout",
+    });
+  }
+
+  it("offers a retry in the transcript instead of an error line", async () => {
+    sendChatMessageMock.mockRejectedValue(timeoutError());
+
+    await useChatStore.getState().send("Describe this image");
+
+    const { messages, error, isSending } = useChatStore.getState();
+    expect(messages).toHaveLength(2);
+    expect(messages[1].role).toBe("assistant");
+    expect(messages[1].content).toBe(TURN_TIMEOUT_MESSAGE);
+    expect(messages[1].retryable).toBe(true);
+    // The point of the branch: this failure is actionable, so it does not land in the
+    // error line the way every other failure does.
+    expect(error).toBeNull();
+    expect(isSending).toBe(false);
+  });
+
+  it("any other failure still goes to the error line", async () => {
+    sendChatMessageMock.mockRejectedValue(new Error("agent failed"));
+
+    await useChatStore.getState().send("Hello");
+
+    const state = useChatStore.getState();
+    expect(state.error).toBe("agent failed");
+    expect(state.messages.some((m) => m.retryable)).toBe(false);
+  });
+
+  it("re-sends the same prompt flagged as a retry, leaving no placeholder", async () => {
+    sendChatMessageMock.mockRejectedValueOnce(timeoutError());
+    await useChatStore.getState().send("Describe this image");
+
+    sendChatMessageMock.mockResolvedValueOnce({ reply: "A red bicycle" });
+    await useChatStore.getState().retry();
+
+    expect(sendChatMessageMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ prompt: "Describe this image", isRetry: true }),
+    );
+    const { messages, pending } = useChatStore.getState();
+    // user + answer: the placeholder is gone and the question was not duplicated.
+    expect(messages).toHaveLength(2);
+    expect(messages[0].content).toBe("Describe this image");
+    expect(messages[1].content).toBe("A red bicycle");
+    expect(messages.some((m) => m.retryable)).toBe(false);
+    expect(pending).toBeNull();
+  });
+
+  it("does not persist the retry offer — it dies with the session", async () => {
+    sendChatMessageMock.mockRejectedValue(timeoutError());
+
+    await useChatStore.getState().send("Describe this image");
+
+    // `pending` holds the File objects and cannot be persisted, so a restored button
+    // would have nothing to send. The offer must not outlive the session (R18/A14).
+    const persisted = JSON.parse(localStorage.getItem(CHAT_STORAGE_KEY)!).state;
+    expect(persisted.messages.some((m: { retryable?: boolean }) => m.retryable)).toBe(
+      false,
+    );
+    expect(persisted.pending).toBeUndefined();
   });
 });

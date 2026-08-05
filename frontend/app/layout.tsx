@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Agent Chat",
-  description: "AI agent chat — frontend",
+  title: "Gemma 4 chat",
+  description: "",
 };
 
 export default function RootLayout({

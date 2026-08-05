@@ -1,4 +1,6 @@
 import type {
+  ChatErrorCode,
+  GuardrailInfo,
   SendMessageRequest,
   SendMessageResponse,
 } from "@/types/chat";
@@ -20,6 +22,8 @@ interface ApiResponse<T> {
   status: "Success" | "Failed";
   data?: T | null;
   error_text?: string | null;
+  /** Machine-readable failure kind; clients branch on this, never on error_text. */
+  error_code?: string | null;
 }
 
 /** Payload of a successful /api/chat call.
@@ -31,14 +35,44 @@ interface ChatReply {
   answer: string;
   /** Thread key the agent stored this turn under (snake_case on the wire). */
   thread_id?: string;
+  /** Safety-gate outcome, snake_case on the wire (guardrails service contract). */
+  guardrails?: {
+    redacted_types?: string[];
+    notice?: string | null;
+    blocked?: boolean;
+  };
+}
+
+/** Map the wire shape to the domain type. Returns undefined when nothing happened,
+ * so an untouched turn carries no guardrail object at all. */
+function toGuardrailInfo(raw: ChatReply["guardrails"]): GuardrailInfo | undefined {
+  if (!raw) return undefined;
+  const redactedTypes = raw.redacted_types ?? [];
+
+  const blocked = raw.blocked ?? false;
+  if (redactedTypes.length === 0 && !blocked) return undefined;
+  return {
+    redactedTypes,
+    blocked,
+    ...(raw.notice ? { notice: raw.notice } : {}),
+  };
 }
 
 /** Error raised when the gateway is unreachable or returns a failure. */
 export class ChatServiceError extends Error {
-  constructor(message: string) {
+  /** Present when the gateway named the failure; `turn_timeout` is retryable. */
+  readonly code?: ChatErrorCode;
+
+  constructor(message: string, code?: ChatErrorCode) {
     super(message);
     this.name = "ChatServiceError";
+    this.code = code;
   }
+}
+
+/** Narrow the wire string to the codes the UI knows how to act on. */
+function toErrorCode(raw: string | null | undefined): ChatErrorCode | undefined {
+  return raw === "turn_timeout" ? "turn_timeout" : undefined;
 }
 
 export async function sendChatMessage(
@@ -61,6 +95,7 @@ export async function sendChatMessage(
     const form = new FormData();
     form.append("prompt", prompt);
     if (request.threadId) form.append("thread_id", request.threadId);
+    if (request.isRetry) form.append("is_retry", "true");
     for (const file of request.files!) form.append("files", file, file.name);
     response = await fetch(`${API_BASE_URL}/api/chat/files`, {
       method: "POST",
@@ -74,6 +109,7 @@ export async function sendChatMessage(
       body: JSON.stringify({
         prompt,
         ...(request.threadId ? { thread_id: request.threadId } : {}),
+        ...(request.isRetry ? { is_retry: true } : {}),
       }),
       signal,
     });
@@ -83,14 +119,17 @@ export async function sendChatMessage(
     // Errors carry honest status codes but still ship the envelope body —
     // surface its error_text when present.
     let detail: string | null = null;
+    let code: ChatErrorCode | undefined;
     try {
       const failed = (await response.json()) as ApiResponse<ChatReply>;
       detail = failed.error_text ?? null;
+      code = toErrorCode(failed.error_code);
     } catch {
       // non-JSON error body — fall back to the status code
     }
     throw new ChatServiceError(
       detail ?? `Gateway request failed with HTTP ${response.status}`,
+      code,
     );
   }
 
@@ -99,12 +138,15 @@ export async function sendChatMessage(
   if (envelope.status !== "Success" || !envelope.data?.answer) {
     throw new ChatServiceError(
       envelope.error_text ?? "Gateway returned no reply",
+      toErrorCode(envelope.error_code),
     );
   }
 
+  const guardrails = toGuardrailInfo(envelope.data.guardrails);
   return {
     reply: envelope.data.answer,
     ...(envelope.data.thread_id ? { threadId: envelope.data.thread_id } : {}),
+    ...(guardrails ? { guardrails } : {}),
   };
 }
 

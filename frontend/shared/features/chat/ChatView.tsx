@@ -14,6 +14,7 @@ export function ChatView() {
   const messages = useChatStore((s) => s.messages);
   const isSending = useChatStore((s) => s.isSending);
   const error = useChatStore((s) => s.error);
+  const retry = useChatStore((s) => s.retry);
   const send = useChatStore((s) => s.send);
   const clearThread = useChatStore((s) => s.clearThread);
   const hydrated = useChatStore((s) => s.hydrated);
@@ -56,7 +57,7 @@ export function ChatView() {
     <div className="mx-auto flex h-screen w-full max-w-2xl flex-col">
       <header className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
         <div>
-          <h1 className="text-base font-semibold">AI agent</h1>
+          <h1 className="text-base font-semibold">Gemma 4 chat</h1>
           <p className="text-xs text-gray-500">
             Chat with the agent · attach images or PDFs for analysis
           </p>
@@ -87,8 +88,11 @@ export function ChatView() {
               role={m.role}
               content={m.content}
               attachments={m.attachments}
+              guardrails={m.guardrails}
               animate={animate}
               onTypingTick={animate ? handleTypingTick : undefined}
+              onRetry={m.retryable ? retry : undefined}
+              retryDisabled={isSending}
             />
           );
         })}
