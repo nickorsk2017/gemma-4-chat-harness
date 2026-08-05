@@ -13,6 +13,7 @@ carries the file bytes.
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 
 from langchain_core.messages import (
@@ -24,12 +25,20 @@ from langchain_core.messages import (
 )
 
 from agent_core.files import FilePayload
+from agent_core.guardrails import (
+    REFUSAL_INPUT,
+    REFUSAL_OUTPUT,
+    GuardrailsUnavailable,
+    check_input,
+    check_output,
+)
 from agent_core.llm import get_llm
 from master_orchestrator.config import settings
 from master_orchestrator.services.files import FileService
 from master_orchestrator.services.memory import get_store
 from master_orchestrator.prompts.generator import PromptGenerator
 from master_orchestrator.schemas.http import (
+    GuardrailInfo,
     OrchestrateRequest,
     OrchestrationResult,
     SubTaskResult,
@@ -37,13 +46,50 @@ from master_orchestrator.schemas.http import (
 from master_orchestrator.services.subagents import SubagentToolset
 
 
+TURN_TIMEOUT_CODE = "turn_timeout"
+
+
+class TurnTimeout(TimeoutError):
+    """The turn outlived its own budget.
+
+    Typed, because the caller must tell it from any other failure: this is the one
+    outcome the UI answers with a retry the user can press, and matching on a message
+    string is how that breaks the first time the wording changes.
+    """
+
+
 class Orchestrator:
     """Runs one orchestration turn: prompt in -> one merged answer out."""
 
     def __init__(self) -> None:
         self._files = FileService()
+        self._deadline: float | None = None
 
     async def run(self, request: OrchestrateRequest) -> OrchestrationResult:
+        """Bound the turn, then run it.
+
+        The budget lives here rather than at the gateway because of what each layer can
+        still do when it fires. The gateway's ceiling can only produce a transport error —
+        by then there is no agent response left to shape. This one fires while a live code
+        path still exists, so the turn can report *why* it ended.
+        """
+        self._deadline = time.monotonic() + settings.turn_budget_s
+        try:
+            # `wait_for`, not `asyncio.timeout`: same cancellation semantics for a single
+            # coroutine, and it does not require 3.11+ of anything that imports this.
+            return await asyncio.wait_for(
+                self._run_turn(request), timeout=settings.turn_budget_s
+            )
+        except (TimeoutError, asyncio.TimeoutError) as exc:
+            raise TurnTimeout(
+                f"the turn exceeded its {settings.turn_budget_s:g}s budget"
+            ) from exc
+
+    def _budget_spent(self) -> bool:
+        """True once this turn has no time left to be doing anything, including saving."""
+        return self._deadline is not None and time.monotonic() >= self._deadline
+
+    async def _run_turn(self, request: OrchestrateRequest) -> OrchestrationResult:
         """Run one orchestration turn and return the merged answer.
 
         The agent owns thread_id generation and input validation (the gateway is a
@@ -56,6 +102,26 @@ class Orchestrator:
         store = await get_store()
         state = await store.load(thread_id)
 
+        # --- input gate (TASK R6a, PLAN D5/D5a) -------------------------------------
+        # Ordering matters and is asserted by test: the gate runs BEFORE anything is
+        # persisted, so raw PII never reaches the checkpointer even though it would
+        # never have reached the LLM either. Thread state is loaded first only because
+        # the gate needs somewhere to record a held turn against.
+        verdict = await check_input(
+            request.prompt, source="orchestrator", surface="prompt", thread_id=thread_id
+        )
+        info = GuardrailInfo(
+            redacted_types=verdict.redacted_types, notice=verdict.notice
+        )
+        if not verdict.allowed:
+            info.blocked = True
+            return await self._halt(store, thread_id, request, REFUSAL_INPUT, info)
+
+        # From here on the redacted prompt is the only prompt. The original is dropped.
+        prompt = verdict.text or request.prompt
+        if verdict.notice:
+            prompt = f"{prompt}\n\n{verdict.notice}"
+
         loaded = await SubagentToolset.load()
         model = get_llm().bind_tools(loaded.tools)
 
@@ -65,7 +131,7 @@ class Orchestrator:
             for text in PromptGenerator(request).system_messages()
         ]
         messages += self._rehydrate(state.messages)
-        messages.append(HumanMessage(content=request.prompt))
+        messages.append(HumanMessage(content=prompt))
 
         results: list[SubTaskResult] = []
         answer = ""
@@ -87,11 +153,55 @@ class Orchestrator:
             # text answer from what it has gathered.
             answer = self._text((await get_llm().ainvoke(messages)).content)
 
-        state.messages.append({"role": "user", "text": request.prompt})
+        # --- output gate (TASK R6c, PLAN D6) ----------------------------------------
+        out = await check_output(
+            answer,
+            source="orchestrator",
+            thread_id=thread_id,
+            known_pii_types=verdict.redacted_types,
+        )
+        if not out.allowed:
+            info.blocked = True
+            answer = REFUSAL_OUTPUT
+        else:
+            answer = out.text or answer
+
+        # A turn that has lost its budget writes nothing (PLAN D20). The gateway has
+        # already given up on it and the user may have pressed retry; a late writer would
+        # append this turn's pair *after* the retry's, so the thread ends up holding two
+        # answers to one question. Cancellation normally gets here first — this check is
+        # what makes it true even when it does not.
+        if self._budget_spent():
+            raise TurnTimeout("budget spent before the turn could be persisted")
+
+        # Only redacted text is ever persisted (PLAN D5a, R-5).
+        user_message: dict[str, str | bool] = {"role": "user", "text": prompt}
+        if request.is_retry:
+            # Inert on the model-facing path: `_rehydrate` reads `role` and `text` only,
+            # so a retried turn does not read to the model as the user asking twice.
+            user_message["retry"] = True
+        state.messages.append(user_message)  # type: ignore[arg-type]
         state.messages.append({"role": "assistant", "text": answer})
         await store.save(thread_id, state)
         return OrchestrationResult(
-            prompt=request.prompt, answer=answer, thread_id=thread_id, results=results
+            prompt=prompt, answer=answer, thread_id=thread_id, results=results,
+            guardrails=info,
+        )
+
+    async def _halt(
+        self,
+        store,
+        thread_id: str,
+        request: OrchestrateRequest,
+        answer: str,
+        info: GuardrailInfo,
+    ) -> OrchestrationResult:
+        """End the turn without running the loop: no LLM call is made (TASK R7).
+
+        The offending prompt is never echoed and never stored — only the outcome is.
+        """
+        return OrchestrationResult(
+            prompt="", answer=answer, thread_id=thread_id, results=[], guardrails=info
         )
 
     async def _dispatch(
@@ -105,9 +215,42 @@ class Orchestrator:
         if call["name"] in loaded.file_tool_names:
             self._files.inject(args, file)
         try:
-            return True, str(await tool.ainvoke(args))
+            output = str(await tool.ainvoke(args))
         except Exception as exc:  # noqa: BLE001 - fail soft across the sub-agent boundary
             return False, f"sub-agent error: {exc}"
+        if call["name"] in loaded.untrusted_tool_names:
+            return await self._gate_result(call["name"], output)
+        return True, output
+
+    async def _gate_result(self, tool_name: str, output: str) -> tuple[bool, str]:
+        """Gate a sub-agent result on its way back into the model's context (PLAN D5).
+
+        A poisoned result fails the **tool**, not the **turn** (D5a). Blocking the whole
+        turn would hand any third party a denial of service on any user query whose
+        search happens to reach a page they control; dropping one result degrades the
+        answer instead, which is what the loop already handles for a failed sub-agent.
+
+        Single-shot on purpose (D5b): the R6 ladder is the output path's. Inside the loop
+        it would multiply the worst case by the iteration count, and an unreachable gate
+        here costs one dropped source rather than an ungated one.
+        """
+        try:
+            verdict = await check_input(
+                output, source=f"orchestrator:{tool_name}", surface="tool_result"
+            )
+        except GuardrailsUnavailable:
+            return False, f"{tool_name}: result discarded (the safety gate is unavailable)"
+        if not verdict.allowed:
+            # Deliberately not "violates policy": the gate also returns `blocked` when its
+            # own model is unavailable (fail-closed), and a marker that names the wrong
+            # cause is how an outage gets debugged as a false positive.
+            return False, f"{tool_name}: result discarded (it did not pass the safety gate)"
+        text = verdict.text
+        # The gate returns untrusted text fenced; the note is what tells the model the
+        # fence is data. Both are the gate's, forwarded unchanged.
+        if verdict.system_note:
+            text = f"{verdict.system_note}\n\n{text}"
+        return True, text
 
     def _rehydrate(self, history: list[dict[str, str]]) -> list[BaseMessage]:
         out: list[BaseMessage] = []

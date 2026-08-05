@@ -24,6 +24,12 @@ class OrchestrateRequest(BaseModel):
     thread_id: str | None = Field(
         default=None, description="Conversation key; groups message history."
     )
+    is_retry: bool = Field(
+        default=False,
+        description="True when the client is re-sending a turn that ran out of time. "
+        "Marks the stored user message so a retried turn is not read as a second "
+        "question; the model never sees the flag.",
+    )
 
 
 class SubTaskResult(BaseModel):
@@ -32,6 +38,22 @@ class SubTaskResult(BaseModel):
     tool: str = Field(..., description="Sub-agent tool name the model invoked.")
     ok: bool = Field(default=True, description="Whether the call succeeded.")
     output: str = Field(default="", description="Raw sub-agent envelope text.")
+
+
+class GuardrailInfo(BaseModel):
+    """What the safety gate did to this turn, carried outward for the UI (TASK R5, A3-5).
+
+    Rides on the result the gateway already forwards unchanged, so no gateway contract
+    changes (PLAN D8 extended).
+    """
+
+    redacted_types: list[str] = Field(
+        default_factory=list, description="PII types removed from the prompt."
+    )
+    notice: str | None = Field(
+        default=None, description="The exact TASK R5 English notice, when PII was redacted."
+    )
+    blocked: bool = Field(default=False, description="True when policy refused the turn.")
 
 
 class OrchestrationResult(BaseModel):
@@ -44,3 +66,7 @@ class OrchestrationResult(BaseModel):
         "when the request omitted one); returned so the client can continue."
     )
     results: list[SubTaskResult] = Field(default_factory=list)
+    guardrails: GuardrailInfo = Field(
+        default_factory=GuardrailInfo,
+        description="Safety-gate outcome for this turn; the gateway forwards it as-is.",
+    )

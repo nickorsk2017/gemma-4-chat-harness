@@ -25,6 +25,7 @@ class SubagentToolset:
     tools: list[BaseTool]
     by_name: dict[str, BaseTool]
     file_tool_names: set[str]  # tools needing the attached file injected
+    untrusted_tool_names: set[str]  # tools whose RESULT is gated on the way back (D5)
 
     @classmethod
     async def load(cls) -> "SubagentToolset":
@@ -33,16 +34,20 @@ class SubagentToolset:
 
         tools: list[BaseTool] = []
         file_tool_names: set[str] = set()
+        untrusted_tool_names: set[str] = set()
         for name in settings.subagents:
             agent_tools = await client.get_tools(server_name=name)
             tools.extend(agent_tools)
             if name in settings.file_subagents:
                 file_tool_names.update(t.name for t in agent_tools)
+            if name in settings.untrusted_subagents:
+                untrusted_tool_names.update(t.name for t in agent_tools)
 
         return cls(
             tools=tools,
             by_name={t.name: t for t in tools},
             file_tool_names=file_tool_names,
+            untrusted_tool_names=untrusted_tool_names,
         )
 
     @staticmethod

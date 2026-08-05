@@ -21,9 +21,15 @@ delete_thread.register(mcp)
 
 def main() -> None:
     if settings.transport in ("http", "streamable-http"):
-        from master_orchestrator.services.http_server import HttpServer
+        from agent_core.http_server import HttpServer
 
-        HttpServer(mcp, settings).run()
+        HttpServer(
+            mcp,
+            name="orchestrator",
+            host=settings.http_host,
+            port=settings.http_port,
+            allowed_hosts=settings.http_allowed_hosts,
+        ).run()
     else:
         mcp.run(transport=settings.transport)
 

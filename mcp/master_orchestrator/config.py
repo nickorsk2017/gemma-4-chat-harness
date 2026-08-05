@@ -22,6 +22,13 @@ DEFAULT_SUBAGENTS: dict[str, dict[str, object]] = {
 DOC_SUBAGENT = "doc_analyzer"
 IMAGE_SUBAGENT = "image_analyzer"
 
+# Sub-agents whose results carry text from outside the perimeter. Their output is gated
+# on the way back into the model's context (PLAN D5). `doc_analyzer` is deliberately NOT
+# here: its document is already checked on the way in, and its return is our own model's
+# answer about already-checked input, so re-gating it buys a second model call for
+# nothing (TASK A6-2).
+UNTRUSTED_SUBAGENTS = ["web_agent"]
+
 
 class OrchestratorSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -45,14 +52,26 @@ class OrchestratorSettings(BaseSettings):
     subagents: dict[str, dict[str, object]] = Field(default_factory=lambda: dict(DEFAULT_SUBAGENTS))
     doc_subagent: str = DOC_SUBAGENT
     image_subagent: str = IMAGE_SUBAGENT
+    untrusted_subagents: list[str] = Field(
+        default_factory=lambda: list(UNTRUSTED_SUBAGENTS)
+    )
 
     @property
     def file_subagents(self) -> set[str]:
         """Sub-agents whose tools receive the injected file at dispatch."""
         return {self.doc_subagent, self.image_subagent}
 
-    # Tool-calling loop bound: how many model<->tool rounds before we stop.
-    max_tool_iterations: int = 4
+    # Tool-calling loop bound: how many model<->tool rounds before we stop. Fewer rounds
+    # is what makes a turn fit the ceiling at all — every round can add a model call and
+    # a sub-agent dispatch.
+    max_tool_iterations: int = 2
+
+    # The orchestrator's own budget for one turn, below the gateway's ceiling (66s) on
+    # purpose. An outer timeout can only ever produce a transport error: by the time it
+    # fires there is no agent response left to shape. This one fires first, while a live
+    # code path still exists, so the turn can answer with a typed `turn_timeout` that the
+    # UI renders as a retry the user can press.
+    turn_budget_s: float = 60.0
 
     # Attachment cap (validated agent-side; the gateway forwards raw bytes).
     max_file_bytes: int = 15 * 1024 * 1024  # 15 MiB
@@ -66,5 +85,16 @@ class OrchestratorSettings(BaseSettings):
     # Env: ORCHESTRATOR_DATABASE_URL (psycopg conn string, e.g. postgresql://...).
     database_url: str | None = None
 
+
+
+    # --- guardrails gate (TASK R10) -------------------------------------------------
+    # Declared here so a misconfigured gate fails at startup rather than at the first
+    # request. agent_core.guardrails reads the same env vars.
+    guardrails_url: str = Field(
+        default="http://guardrails:8200", validation_alias="GUARDRAILS_URL"
+    )
+    guardrails_timeout_s: float = Field(
+        default=15.0, validation_alias="GUARDRAILS_TIMEOUT_S"
+    )
 
 settings = OrchestratorSettings()

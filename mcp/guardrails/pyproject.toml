@@ -1,0 +1,37 @@
+[project]
+name = "guardrails"
+version = "0.1.0"
+description = "guardrails MCP server — the content-safety and PII gate every agent calls"
+requires-python = ">=3.14"
+dependencies = [
+    "fastmcp>=2.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "pyahocorasick>=2.1.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "agent-core>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0", "ruff>=0.5.0"]
+
+[project.scripts]
+guardrails = "guardrails.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Flat layout: this pyproject.toml lives inside the package dir (mcp/guardrails/),
+# so map the directory contents to the "guardrails" import package in the wheel.
+[tool.hatch.build.targets.wheel]
+only-include = ["."]
+sources = { "." = "guardrails" }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = [".."]
+
+[tool.ruff]
+line-length = 100

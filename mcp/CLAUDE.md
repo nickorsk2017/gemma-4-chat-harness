@@ -11,7 +11,8 @@ Every agent is its **own installable distribution** in a single top-level folder
 `mcp/`. The folder name **is** the import root (underscored, because Python identifiers
 can't contain hyphens); the agent's code and its `pyproject.toml` live directly inside it —
 there is no `packages/` wrapper and no `<dist-name>/<import_root>` doubling. Agents share
-only `agent_core` (response envelope + LLM factory); no agent may import another agent.
+only `agent_core` (response envelope + LLM factory + the streamable-HTTP server); no agent
+may import another agent.
 
 ```
 mcp/
@@ -37,7 +38,9 @@ local work); it is NOT a shared umbrella package.
 
 ## Stack conventions
 
-- **Language:** Python ≥ 3.11, fully type-hinted. Async-first.
+- **Language:** Python ≥ 3.14, fully type-hinted. Async-first. There is no upper bound: the
+  guardrails agent's presidio dependency resolves spaCy correctly on 3.14 from 2.2.364 onward,
+  which is why its pin has a floor rather than the repo having a ceiling.
 - **MCP:** `fastmcp` (FastMCP v2). Each `main.py` builds a `FastMCP` instance and exposes tools.
 - **LLM / tools:** `langchain-core` chat models. The orchestrator binds the sub-agents' tools to the model and runs a **tool-calling loop** (the model selects tools; the orchestrator executes them fail-soft and in parallel). Sub-agents are reached as MCP clients via `langchain-mcp-adapters`.
 - **Multi-step logic:** implemented directly in async Python (no graph framework); keep it in `tools/` behind Pydantic contracts.
@@ -48,6 +51,11 @@ local work); it is NOT a shared umbrella package.
 
 1. **One responsibility per agent.** `web_agent` fetches from the internet, `doc_analyzer` reads PDFs,
    `image_analyzer` inspects images. The orchestrator never does domain work itself — it only routes and merges.
+1a. **The topology is a star with one exception.** No agent may call another **domain** agent — that rule
+   exists to keep the call graph acyclic, and a peer edge is dangerous because it can close a cycle.
+   `guardrails` is the single cross-cutting exception: any agent may call it, and it calls none, so an edge
+   into it closes nothing. `doc_analyzer` reaches it directly for exactly this reason. No second exception
+   may be added without the same argument.
 2. **Contracts first.** Define `schemas/*.py` before writing tools. Tools accept and return Pydantic models.
    `schemas/http.py` holds the request/response envelope every tool shares.
 3. **Tools are thin.** A tool in `tools/` validates input, calls into a provider/service, returns a schema. No business logic buried in `main.py`.
@@ -68,6 +76,7 @@ local work); it is NOT a shared umbrella package.
 | `web_agent`          | Retrieves live data from the internet (news, weather, general web).  |
 | `doc_analyzer`       | Analyzes documents, primarily PDFs (extract, summarize, Q&A).        |
 | `image_analyzer`     | Analyzes images (describe, detect, OCR).                             |
+| `guardrails`         | The content-safety and PII gate. Cross-cutting, not a domain agent: **any** agent may call it, and it calls none. Reached over streamable-HTTP, never spawned over stdio. |
 
 ## Running
 

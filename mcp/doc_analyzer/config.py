@@ -23,5 +23,15 @@ class DocAnalyzerSettings(BaseSettings):
     llm_api_key: str | None = Field(default=None, validation_alias="GEMMA_API_KEY")
     request_timeout_s: float = 30.0
 
+    # --- guardrails gate (TASK R10) -------------------------------------------------
+    # Declared here so a misconfigured gate fails at startup rather than at the first
+    # request. agent_core.guardrails reads the same env vars.
+    guardrails_url: str = Field(
+        default="http://guardrails:8200", validation_alias="GUARDRAILS_URL"
+    )
+    guardrails_timeout_s: float = Field(
+        default=15.0, validation_alias="GUARDRAILS_TIMEOUT_S"
+    )
+
 
 settings = DocAnalyzerSettings()

@@ -1,5 +1,7 @@
 # agent-chat — full stack: frontend + backend gateway + mcp orchestrator.
 # Start everything with:  make up   (or: docker compose up -d --build)
+# For the docker-free stack (`make dev`) only this file's postgres service is used;
+# it publishes its port on the host so the native processes can reach it.
 name: agent-chat
 
 services:
@@ -9,6 +11,9 @@ services:
       POSTGRES_USER: "${POSTGRES_USER:-agent}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-agent}"
       POSTGRES_DB: "${POSTGRES_DB:-agent_chat}"
+    ports:
+      # Published so host-native services (`make dev`) can reach the same DB.
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       # LangGraph thread checkpoints (conversation history + stored PDF text).
       - pgdata:/var/lib/postgresql/data
@@ -17,6 +22,37 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks: [agentnet]
+    restart: unless-stopped
+
+  guardrails:
+    build:
+      # Context is ./mcp, not ./mcp/guardrails: the agent depends on agent_core.
+      context: ./mcp
+      dockerfile: guardrails/Dockerfile
+    image: agent-chat/guardrails
+    ports:
+      - "${GUARDRAILS_PORT:-8200}:8200"
+    environment:
+      GUARDRAILS_TRANSPORT: "streamable-http"
+      GUARDRAILS_HTTP_HOST: "0.0.0.0"
+      GUARDRAILS_HTTP_PORT: "8200"
+      # The judge runs on the same provider as the agents, but with its OWN budget:
+      # inheriting the agents' 30s timeout would make a hung gate indistinguishable
+      # from a down one and fire the fail-closed path on healthy traffic.
+      GEMMA_API_KEY: "${GEMMA_API_KEY:?GEMMA_API_KEY is required (see .env.example)}"
+      GUARDRAILS_JUDGE_TIMEOUT_S: "${GUARDRAILS_JUDGE_TIMEOUT_S:-8}"
+      GUARDRAILS_JUDGE_MAX_CHARS: "${GUARDRAILS_JUDGE_MAX_CHARS:-6000}"
+      # The medical path answers with a disclaimer; there is no moderator queue.
+      GUARDRAILS_MEDICAL_DISCLAIMER: "${GUARDRAILS_MEDICAL_DISCLAIMER:-true}"
+    healthcheck:
+      # The MCP endpoint is a session protocol, not a GET-able health page: a TCP
+      # connect is what can be asserted without opening a session.
+      test: ["CMD-SHELL", "python -c \"import socket,sys; s=socket.create_connection(('localhost',8200),3); s.close()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
     networks: [agentnet]
     restart: unless-stopped
 
@@ -31,11 +67,13 @@ services:
       GEMMA_API_KEY: "${GEMMA_API_KEY:?GEMMA_API_KEY is required (see .env.example)}"
       # Tavily key for web_agent live search (search_web / get_news).
       TAVILY_API_KEY: "${TAVILY_API_KEY:-}"
-      # Per-sub-agent budget (real gemma calls over full documents/images).
-      ORCHESTRATOR_SUBAGENT_TIMEOUT_S: "${ORCHESTRATOR_SUBAGENT_TIMEOUT_S:-200}"
-      # Per-attempt LLM HTTP timeout (agent_core.llm). One hung attempt + one
-      # retry (2x90s) still fit the 200s sub-agent budget.
-      LLM_REQUEST_TIMEOUT_S: "${LLM_REQUEST_TIMEOUT_S:-90}"
+      # Per-attempt LLM HTTP timeout (agent_core.llm). 30s, with max_retries=1, so one
+      # hung call is 60s and dies inside the turn budget instead of outliving it.
+      LLM_REQUEST_TIMEOUT_S: "${LLM_REQUEST_TIMEOUT_S:-30}"
+      # The orchestrator's own turn budget. Below the gateway ceiling on purpose: an outer
+      # timeout can only produce a transport error, an inner one still holds a live code
+      # path and can answer with a typed "turn_timeout" the UI turns into a retry button.
+      ORCHESTRATOR_TURN_BUDGET_S: "${ORCHESTRATOR_TURN_BUDGET_S:-60}"
       # Thread memory: LangGraph AsyncPostgresSaver checkpointer.
       ORCHESTRATOR_DATABASE_URL: "postgresql://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:-agent}@postgres:5432/${POSTGRES_DB:-agent_chat}"
       # LangSmith tracing for ALL agents (orchestrator + stdio sub-agents inherit
@@ -44,12 +82,26 @@ services:
       LANGSMITH_API_KEY: "${LANGSMITH_API_KEY:-}"
       LANGSMITH_ENDPOINT: "${LANGSMITH_ENDPOINT:-https://api.smith.langchain.com}"
       LANGSMITH_PROJECT: "${LANGSMITH_PROJECT:-gemma-chat}"
+      # Safety gate reached by the orchestrator (input+output) and doc_analyzer.
+      GUARDRAILS_URL: "http://guardrails:8200/mcp"
+      GUARDRAILS_TIMEOUT_S: "${GUARDRAILS_TIMEOUT_S:-15}"
+      # Output-path retry ladder. Two attempts of 15s with a flat 1s gap = 31s worst
+      # case against a hung gate; the deadline is the ceiling on the phase and must stay
+      # above one full ladder. GUARDRAILS_TIMEOUT_S is NOT a lever: the gate's own judge
+      # budget is 8s, so a shorter client timeout cuts off healthy verdicts and
+      # manufactures outages. No exponential growth — with two attempts there is one gap.
+      GUARDRAILS_RETRY_ATTEMPTS: "${GUARDRAILS_RETRY_ATTEMPTS:-2}"
+      GUARDRAILS_RETRY_BASE_S: "${GUARDRAILS_RETRY_BASE_S:-1}"
+      GUARDRAILS_RETRY_FACTOR: "${GUARDRAILS_RETRY_FACTOR:-1}"
+      GUARDRAILS_OUTPUT_DEADLINE_S: "${GUARDRAILS_OUTPUT_DEADLINE_S:-35}"
     volumes:
       # IMAGE attachments saved by the gateway; vision sub-agents read them by
       # path. PDFs never touch disk — their text travels inside the request.
       - uploads:/data/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      guardrails:
         condition: service_healthy
     networks: [agentnet]
     restart: unless-stopped
@@ -67,8 +119,9 @@ services:
       # The gateway always routes through the mcp service in the composed stack.
       GATEWAY_ORCHESTRATOR_MODE: "http"
       GATEWAY_ORCHESTRATOR_MCP_URL: "http://mcp:8100/mcp"
-      # Total budget: planner + slowest sub-agent + synthesis.
-      GATEWAY_ORCHESTRATOR_TIMEOUT_S: "${GATEWAY_ORCHESTRATOR_TIMEOUT_S:-180}"
+      # Outermost backstop for one turn. The orchestrator's own budget (60s) fires first
+      # and is what produces the retry message; this catches a process wedged below it.
+      GATEWAY_ORCHESTRATOR_TIMEOUT_S: "${GATEWAY_ORCHESTRATOR_TIMEOUT_S:-66}"
       GATEWAY_UPLOAD_DIR: "/data/uploads"
     volumes:
       - uploads:/data/uploads
