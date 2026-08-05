@@ -80,8 +80,13 @@ def _with_disclaimer(verdict: Verdict, signal: str) -> Verdict:
     return verdict
 
 
-# The three the prompt asks for. Anything else is a model slip, not a new type.
-_MODEL_PII_TYPES = {"PERSON", "LOCATION", "OTHER"}
+# The four the prompt asks for. Anything else is a model slip, not a new type.
+#
+# ``ID_NUMBER`` and the prompt's identifier clause are one change, not two. The fallback
+# below rewrites an unknown type to PERSON, so widening the prompt alone would mask a DNI
+# and then report it as somebody's name — wrong in the user's notice and wrong in the
+# `known_pii_types` the output gate re-checks against.
+_MODEL_PII_TYPES = {"PERSON", "LOCATION", "ID_NUMBER", "OTHER"}
 _TYPE = re.compile(r"[^A-Z_]")
 
 
