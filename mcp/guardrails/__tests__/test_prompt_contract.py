@@ -36,3 +36,12 @@ def test_every_type_the_prompt_offers_is_a_type_the_cascade_accepts():
 def test_the_declaration_is_the_signal_not_the_shape():
     assert "whether or not it is well formed" in JUDGE_SYSTEM
     assert "order id" in JUDGE_SYSTEM  # the counter-example that bounds it
+
+
+def test_terseness_is_not_injection_evidence():
+    """2026-08-05-guardrail-news-false-positive: the reported defect. A short,
+    non-English informational ask ("Какие новости?") was scored as injection because
+    the clause gave the judge no counter-example, only abstract wording. If this rule
+    or its anchor phrase disappears, the model has nothing to weigh again."""
+    assert "Terseness is not evidence" in JUDGE_SYSTEM
+    assert "Какие новости?" in JUDGE_SYSTEM  # the counter-example that bounds it
