@@ -28,6 +28,25 @@ Browser ── Next.js frontend (:3000)
          PostgreSQL — orchestrator thread store (history + stored document text)
 ```
 
+## Guardrails
+
+Every agent turn passes through the `guardrails` MCP service (`mcp/guardrails/`,
+port 8200, two tools: `check_input` / `check_output`). It screens for prompt
+injection, sexual/drug content, and PII: structured PII (RU phone, RU passport,
+SNILS, INN, email, credit card, IBAN) is caught deterministically by regex +
+checksum, everything else (injection, sexual/drug content, unstructured PII like
+names) by LLM judgment. PII is redacted in place with a notice; other categories
+block the request.
+
+Coverage differs by call site: `master_orchestrator` gates every user prompt
+before its tool-calling loop, `doc_analyzer` gates ingested document text, and
+`web_agent` results are gated on return (untrusted, live internet data);
+`image_analyzer` output is not gated. The input-check path is **fail-closed** — a
+guardrails outage blocks the turn. The output-check path retries with exponential
+backoff, bounded by both an attempt cap (`GUARDRAILS_RETRY_ATTEMPTS`) and a
+wall-clock deadline (`GUARDRAILS_OUTPUT_DEADLINE_S`), and only goes **fail-open**
+once that ladder is exhausted; `check_input` itself is single-shot, no retry.
+
 ## Repository structure
 
 | Path | What lives here |
@@ -123,4 +142,5 @@ artifact-driven harness; chat/LLM context is never a source of truth. Full spec:
 | frontend | 3000 | chat UI |
 | backend | 8000 | REST gateway (`/api/chat`, `/api/chat/files`) |
 | mcp | 8100 | orchestrator, streamable-HTTP `/mcp` |
+| guardrails | 8200 | input/output content + PII checks, streamable-HTTP `/mcp` |
 | postgres | — | internal only (compose network) |
