@@ -1,0 +1,6 @@
+# LOG — 2026-08-05-guardrail-news-false-positive
+- 2026-08-05T16:28 Engineer INIT created, complexity=MEDIUM, next_actor=Planner
+- 2026-08-05T16:45 Planner PLAN.md v1 written, root cause=JUDGE_SYSTEM injection clause (prompts.py), fix=negative-rule+anchor example, tests=INJECTION_BENIGN + prompt_contract pin; stage=PLANNED, next_actor=Executor
+- 2026-08-05T17:05 Executor EXEC.md v1 written: prompts.py injection clause extended (P1), INJECTION_BENIGN +2 (P2), test_prompt_contract.py pin added (P3); prompt_contract 5/5 + stubbed suite 206/206 pass; live corpus test (test_injection_corpus.py) blocked by sandbox egress to api.novita.ai (judge returns None, fail-closed), flagged as open item for Validator; stage=EXECUTED, next_actor=Validator
+- 2026-08-05T17:20 Validator VALIDATION.md v1: PASS. R1/R2/A3/Constraints conform to PLAN v1. A1/A2 deterministic evidence green (5/5 + 206/206); live-model corpus test not empirically confirmed (sandbox egress to api.novita.ai blocked, 403/ProxyError, confirmed independent of this change) — recorded as non-blocking open note for Engineer, not routed as FAIL since no in-session actor can resolve a network-egress restriction. stage=VALIDATED, status=PASS
+- 2026-08-05T20:34 Engineer CLOSED done=True; archived to tasks/DONE/2026-08

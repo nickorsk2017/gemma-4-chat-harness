@@ -1,0 +1,11 @@
+task_id: 2026-08-05-guardrail-news-false-positive
+stage: DONE
+status: PASS
+iteration: 0
+complexity: MEDIUM
+next_actor: none
+plan_version: 1
+exec_version: 1
+validation_version: 1
+open_issues: []
+last_error: null
