@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from _common.env import get_settings
 from gateway.routers import chat_router
+from gateway.services.ratelimit import limiter, rate_limit_exceeded_handler
 
 
 def create_app() -> FastAPI:
@@ -17,6 +20,11 @@ def create_app() -> FastAPI:
         version="0.1.0",
         summary="REST boundary between the frontend chat and the MCP orchestrator.",
     )
+    # Rate limiting (R1, PLAN D1): the app's own envelope on a 429, never slowapi's
+    # default JSON shape (RK1) — registered before CORS so CORS still wraps a 429.
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

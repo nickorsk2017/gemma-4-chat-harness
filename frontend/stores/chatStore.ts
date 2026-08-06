@@ -6,19 +6,22 @@ import { deleteChatThread, sendChatMessage } from "@/services/chatService";
 /** Shown in place of an answer when the turn ran out of time. */
 export const TURN_TIMEOUT_MESSAGE = "Please repeat your request";
 
+/** Failure codes the user can act on by re-sending the same turn. */
+const RETRYABLE_CODES = new Set(["turn_timeout", "rate_limited"]);
+
 /**
- * Is this the one failure the user can act on?
+ * Is this one of the failures the user can act on?
  *
  * Duck-typed on the code rather than `instanceof ChatServiceError`: class identity does
  * not survive a mocked module or a second copy of the bundle, and the store only needs
  * the code. Never matched on message text — that is prose, not a contract.
  */
-function isTurnTimeout(err: unknown): boolean {
+function isRetryableFailure(err: unknown): boolean {
   return (
     typeof err === "object" &&
     err !== null &&
     "code" in err &&
-    (err as { code?: unknown }).code === "turn_timeout"
+    RETRYABLE_CODES.has((err as { code?: unknown }).code as string)
   );
 }
 
@@ -134,10 +137,10 @@ export const useChatStore = create<ChatState>()(
             threadId: state.threadId ?? threadId ?? null,
           }));
         } catch (err) {
-          // The turn running out of time is the one failure the user can act on,
-          // so it goes into the transcript with an action rather than into the
-          // error line. Branching on the code, never on the message text.
-          if (isTurnTimeout(err)) {
+          // A timed-out or rate-limited turn is one the user can act on, so it goes
+          // into the transcript with an action rather than into the error line.
+          // Branching on the code, never on the message text.
+          if (isRetryableFailure(err)) {
             const placeholder = makeMessage("assistant", TURN_TIMEOUT_MESSAGE);
             set((state) => ({
               messages: [...state.messages, { ...placeholder, retryable: true }],

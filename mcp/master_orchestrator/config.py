@@ -97,4 +97,12 @@ class OrchestratorSettings(BaseSettings):
         default=15.0, validation_alias="GUARDRAILS_TIMEOUT_S"
     )
 
+    # --- rate limiting (TASK 2026-08-05-rate-limit-gateway-orchestrator, R2/R4) ------
+    # Defence in depth: bounds a caller reaching the orchestrator directly, bypassing
+    # the gateway's own per-IP limit. Sized above ordinary single-browser use for a
+    # single-replica dev deployment (same reasoning already applied to turn_budget_s).
+    # <=0 disables that bucket at the call site (RK6), never via a per-call branch.
+    rate_limit_thread_rpm: int = 20
+    rate_limit_global_rpm: int = 60
+
 settings = OrchestratorSettings()

@@ -33,6 +33,7 @@ from agent_core.guardrails import (
     check_output,
 )
 from agent_core.llm import get_llm
+from agent_core.ratelimit import RateLimited, RateLimiter
 from master_orchestrator.config import settings
 from master_orchestrator.services.files import FileService
 from master_orchestrator.services.memory import get_store
@@ -47,6 +48,17 @@ from master_orchestrator.services.subagents import SubagentToolset
 
 
 TURN_TIMEOUT_CODE = "turn_timeout"
+RATE_LIMITED_CODE = "rate_limited"
+
+# Anonymous turns (no thread_id) share one bucket rather than each getting its own
+# unbounded allowance (PLAN D3).
+_ANONYMOUS_THREAD_KEY = "__anonymous__"
+_GLOBAL_KEY = "__global__"
+
+# Module-level, process-lifetime buckets (PLAN D3/D4): the storage backing them must
+# persist across turns for the limit to mean anything, so they are not per-call state.
+_thread_limiter = RateLimiter()
+_global_limiter = RateLimiter()
 
 
 class TurnTimeout(TimeoutError):
@@ -65,14 +77,36 @@ class Orchestrator:
         self._files = FileService()
         self._deadline: float | None = None
 
+    def _check_rate_limits(self, thread_id: str | None) -> None:
+        """Reject an over-limit turn before any billable or stateful work (R2/R3).
+
+        Two independent buckets, per-thread then process-global (PLAN D3): a caller
+        that rotates thread_ids to dodge the first bucket still lands in the second.
+        """
+        thread_key = thread_id or _ANONYMOUS_THREAD_KEY
+        if not _thread_limiter.hit(thread_key, settings.rate_limit_thread_rpm):
+            raise RateLimited(
+                _thread_limiter.retry_after_s(thread_key, settings.rate_limit_thread_rpm)
+            )
+        if not _global_limiter.hit(_GLOBAL_KEY, settings.rate_limit_global_rpm):
+            raise RateLimited(
+                _global_limiter.retry_after_s(_GLOBAL_KEY, settings.rate_limit_global_rpm)
+            )
+
     async def run(self, request: OrchestrateRequest) -> OrchestrationResult:
         """Bound the turn, then run it.
 
-        The budget lives here rather than at the gateway because of what each layer can
-        still do when it fires. The gateway's ceiling can only produce a transport error —
-        by then there is no agent response left to shape. This one fires while a live code
-        path still exists, so the turn can report *why* it ended.
+        The rate-limit check (R2/R3/PLAN D4) runs first, before the budget clock starts
+        and before `_run_turn` does anything: a rejected turn must never call the LLM,
+        the guardrails gate, or touch the store, and it must never race the timeout
+        (RK4 — inside `wait_for` a rejection could misreport as a timeout instead).
+
+        The budget itself lives here rather than at the gateway because of what each
+        layer can still do when it fires. The gateway's ceiling can only produce a
+        transport error — by then there is no agent response left to shape. This one
+        fires while a live code path still exists, so the turn can report *why* it ended.
         """
+        self._check_rate_limits(request.thread_id)
         self._deadline = time.monotonic() + settings.turn_budget_s
         try:
             # `wait_for`, not `asyncio.timeout`: same cancellation semantics for a single

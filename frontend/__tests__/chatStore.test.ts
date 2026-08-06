@@ -200,6 +200,14 @@ describe("chatStore — a turn that ran out of time", () => {
     });
   }
 
+  /** What the service throws when the gateway (or the orchestrator, via the
+   * gateway) rejects the turn for being over the rate limit. */
+  function rateLimitedError() {
+    return Object.assign(new Error("rate limit exceeded"), {
+      code: "rate_limited",
+    });
+  }
+
   it("offers a retry in the transcript instead of an error line", async () => {
     sendChatMessageMock.mockRejectedValue(timeoutError());
 
@@ -214,6 +222,21 @@ describe("chatStore — a turn that ran out of time", () => {
     // error line the way every other failure does.
     expect(error).toBeNull();
     expect(isSending).toBe(false);
+  });
+
+  it("A4: a rate-limited reply gets the same retryable/pending state as a timeout", async () => {
+    sendChatMessageMock.mockRejectedValue(rateLimitedError());
+
+    await useChatStore.getState().send("Describe this image");
+
+    const { messages, error, isSending, pending } = useChatStore.getState();
+    expect(messages).toHaveLength(2);
+    expect(messages[1].role).toBe("assistant");
+    expect(messages[1].content).toBe(TURN_TIMEOUT_MESSAGE);
+    expect(messages[1].retryable).toBe(true);
+    expect(error).toBeNull();
+    expect(isSending).toBe(false);
+    expect(pending).toEqual({ prompt: "Describe this image" });
   });
 
   it("any other failure still goes to the error line", async () => {

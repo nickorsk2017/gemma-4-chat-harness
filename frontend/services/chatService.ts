@@ -60,7 +60,8 @@ function toGuardrailInfo(raw: ChatReply["guardrails"]): GuardrailInfo | undefine
 
 /** Error raised when the gateway is unreachable or returns a failure. */
 export class ChatServiceError extends Error {
-  /** Present when the gateway named the failure; `turn_timeout` is retryable. */
+  /** Present when the gateway named the failure; `turn_timeout` and `rate_limited`
+   * are both retryable. */
   readonly code?: ChatErrorCode;
 
   constructor(message: string, code?: ChatErrorCode) {
@@ -72,7 +73,7 @@ export class ChatServiceError extends Error {
 
 /** Narrow the wire string to the codes the UI knows how to act on. */
 function toErrorCode(raw: string | null | undefined): ChatErrorCode | undefined {
-  return raw === "turn_timeout" ? "turn_timeout" : undefined;
+  return raw === "turn_timeout" || raw === "rate_limited" ? raw : undefined;
 }
 
 export async function sendChatMessage(

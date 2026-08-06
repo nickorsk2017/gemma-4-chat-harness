@@ -7,6 +7,7 @@ from agent_core.files import (
     FilePayload,
     classify,
 )
+from agent_core.ratelimit import RateLimited, RateLimiter
 
 __all__ = [
     "FilePayload",
@@ -14,4 +15,6 @@ __all__ = [
     "classify",
     "DOCUMENT_TYPES",
     "IMAGE_TYPES",
+    "RateLimited",
+    "RateLimiter",
 ]

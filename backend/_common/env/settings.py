@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     # --- Persistence (scaffolded; not on the mock chat path) ---
     database_url: str = "sqlite+aiosqlite:///./gateway.db"
 
+    # --- Rate limiting (TASK 2026-08-05-rate-limit-gateway-orchestrator, R1/R4) ---
+    # slowapi limit-string syntax (e.g. "30/minute"), applied per remote address to
+    # POST /api/chat and /api/chat/files. Empty string disables the gate entirely
+    # (construction-time no-op, not a per-call branch — see gateway/services/ratelimit.py).
+    rate_limit_default: str = "30/minute"
+
 
 @lru_cache
 def get_settings() -> Settings:

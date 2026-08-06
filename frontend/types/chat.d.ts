@@ -46,10 +46,10 @@ export interface SendMessageRequest {
 }
 
 /**
- * Machine-readable failure kinds from the gateway. Only `turn_timeout` is actionable:
- * it is the one failure the user can do something about, by re-sending.
+ * Machine-readable failure kinds from the gateway. Both are actionable: the one
+ * failure the user can do something about, by re-sending.
  */
-export type ChatErrorCode = "turn_timeout";
+export type ChatErrorCode = "turn_timeout" | "rate_limited";
 
 /** Agent response. */
 export interface SendMessageResponse {

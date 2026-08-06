@@ -26,6 +26,9 @@ from gateway.schemas.chat import FilePayload
 # Mirrored, not imported: the gateway may not import mcp/ packages (backend rule 7).
 # Kept in step with master_orchestrator.services.orchestrator.TURN_TIMEOUT_CODE.
 TURN_TIMEOUT_CODE = "turn_timeout"
+# Kept in step with master_orchestrator.services.orchestrator.RATE_LIMITED_CODE
+# (TASK 2026-08-05-rate-limit-gateway-orchestrator, PLAN D5).
+RATE_LIMITED_CODE = "rate_limited"
 
 
 class AgentOutcome(BaseModel):
@@ -44,6 +47,11 @@ class AgentOutcome(BaseModel):
         description="Machine-readable failure kind, forwarded from the agent envelope's "
         "meta.code or set here for the gateway's own timeout. Clients branch on this; "
         "`error` is prose and is not a contract.",
+    )
+    retry_after_s: float | None = Field(
+        default=None,
+        description="Seconds to wait before retrying, forwarded from the agent envelope's "
+        "meta.retry_after_s. Present when error_code == 'rate_limited'.",
     )
 
 
@@ -86,8 +94,12 @@ def _to_outcome(payload: Any, *, expect_data: bool) -> AgentOutcome:
     if payload.get("status") == "error":
         meta = payload.get("meta")
         code = meta.get("code") if isinstance(meta, dict) else None
+        retry_after_s = meta.get("retry_after_s") if isinstance(meta, dict) else None
         return AgentOutcome(
-            ok=False, error=payload.get("error") or "agent error", error_code=code
+            ok=False,
+            error=payload.get("error") or "agent error",
+            error_code=code,
+            retry_after_s=retry_after_s,
         )
     data = payload.get("data")
     if expect_data and not isinstance(data, dict):

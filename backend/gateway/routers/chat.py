@@ -7,17 +7,19 @@ agent-reported failure (including validation) -> 502. Success is 200.
 
 from __future__ import annotations
 
+import math
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from _common.env import Settings, get_settings
 from _common.schemas import ApiResponse
 from gateway.schemas.chat import AgentData, ChatRequest, DeleteThreadReply
-from gateway.services.agent_client import TURN_TIMEOUT_CODE, AgentOutcome
+from gateway.services.agent_client import RATE_LIMITED_CODE, TURN_TIMEOUT_CODE, AgentOutcome
 from gateway.services.chat_service import ChatService
 from gateway.services.agent_client import build_agent_client
+from gateway.services.ratelimit import default_limit_value, limiter
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -28,13 +30,24 @@ def get_chat_service(settings: Settings = Depends(get_settings)) -> ChatService:
 
 
 def _fail(
-    status_code: int, error_text: str, error_code: str | None = None
+    status_code: int,
+    error_text: str,
+    error_code: str | None = None,
+    retry_after_s: float | None = None,
 ) -> JSONResponse:
-    """Failed envelope with an honest HTTP status code."""
-    return JSONResponse(
+    """Failed envelope with an honest HTTP status code.
+
+    ``retry_after_s``, when given, becomes a whole-second ``Retry-After`` header
+    (ceiling, minimum 1) — the one place both 429 sources (the gateway's own
+    slowapi rejection and the orchestrator's) compute the header (PLAN D5).
+    """
+    response = JSONResponse(
         status_code=status_code,
         content=ApiResponse.fail(error_text, error_code).model_dump(mode="json"),
     )
+    if retry_after_s is not None:
+        response.headers["Retry-After"] = str(max(1, math.ceil(retry_after_s)))
+    return response
 
 
 def _reply(outcome: AgentOutcome) -> JSONResponse | ApiResponse[AgentData]:
@@ -44,19 +57,26 @@ def _reply(outcome: AgentOutcome) -> JSONResponse | ApiResponse[AgentData]:
         # re-sending it is a sensible thing to offer. Everything else stays 502.
         if outcome.error_code == TURN_TIMEOUT_CODE:
             return _fail(504, outcome.error or "the turn ran out of time", TURN_TIMEOUT_CODE)
+        # The orchestrator's own rate-limit rejection (R2/R3), mapped the same way the
+        # gateway's own slowapi rejection is: 429 + Retry-After, same envelope + code.
+        if outcome.error_code == RATE_LIMITED_CODE:
+            retry_after = outcome.retry_after_s if outcome.retry_after_s is not None else 1.0
+            return _fail(429, outcome.error or "rate limit exceeded", RATE_LIMITED_CODE, retry_after)
         return _fail(502, outcome.error or "agent failed", outcome.error_code)
     return ApiResponse.ok(AgentData(**outcome.data))
 
 
 @router.post("/chat", response_model=ApiResponse[AgentData])
+@limiter.limit(default_limit_value)
 async def chat(
-    request: ChatRequest,
+    request: Request,
+    payload: ChatRequest,
     service: ChatService = Depends(get_chat_service),
 ):
     """Forward a user prompt to the agent and return its answer."""
     try:
         outcome = await service.reply(
-            request.prompt, request.file, request.thread_id, request.is_retry
+            payload.prompt, payload.file, payload.thread_id, payload.is_retry
         )
         return _reply(outcome)
     except Exception as exc:  # noqa: BLE001 - structured, never an unhandled 500
@@ -64,7 +84,9 @@ async def chat(
 
 
 @router.post("/chat/files", response_model=ApiResponse[AgentData])
+@limiter.limit(default_limit_value)
 async def chat_with_files(
+    request: Request,
     prompt: Annotated[str, Form(description="User prompt.")],
     files: Annotated[list[UploadFile], File(description="Image/PDF attachment.")],
     thread_id: Annotated[
