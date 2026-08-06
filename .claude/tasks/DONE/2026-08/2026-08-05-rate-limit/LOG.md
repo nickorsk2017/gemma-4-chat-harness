@@ -1,8 +1,0 @@
-# LOG — 2026-08-05-rate-limit
-- 2026-08-05T03:51 Engineer INIT created, complexity=HIGH, next_actor=Planner
-- 2026-08-05T03:51 Engineer authored TASK.md (R1-R10, A1-A8); next_actor=Planner
-- 2026-08-05T03:52 Planner wrote PLAN.md v1 (D1-D9, 20 files, P1-P7, RK1-RK5); stage=PLANNED, next_actor=Engineer(approve), plan_version=1
-- 2026-08-05T06:55 Engineer approved PLAN.md v1; stage=APPROVED, next_actor=Executor
-- 2026-08-05T07:19 Engineer rolled back task: edited TASK.md (R6, Constraints) to require the `limits` Python library instead of a hand-rolled token bucket; reset stage=INIT, next_actor=Planner, PLAN.md v1 superseded (kept for history, Planner must write v2)
-- 2026-08-05T12:43 Engineer deleted all rate-limit implementation artifacts: removed backend/_common/ratelimit.py, backend/gateway/middleware/ (RateLimitMiddleware), backend/tests/test_rate_limit.py, mcp/agent_core/ratelimit.py, mcp/tests/test_rate_limit.py; reverted backend/_common/__init__.py, backend/_common/env/settings.py, backend/gateway/main.py, backend/gateway/routers/chat.py, backend/gateway/services/agent_client.py, frontend/services/chatService.ts, frontend/types/chat.d.ts, mcp/agent_core/__init__.py, mcp/master_orchestrator/config.py, mcp/master_orchestrator/services/orchestrator.py, mcp/master_orchestrator/tools/start_job.py to HEAD; hand-edited frontend/stores/chatStore.ts to drop rate-limit additions while preserving the unrelated turn-timeout English-copy change. Verified via git grep that no rate-limit references remain in backend/mcp/frontend. Working tree is clean of this task's code; stage stays INIT, next_actor=Planner for a v2 plan built around `limits`.
-- 2026-08-05T09:44 Engineer CLOSED done=False; archived to tasks/DONE/2026-08
