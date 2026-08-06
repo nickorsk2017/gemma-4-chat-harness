@@ -63,14 +63,21 @@ once that ladder is exhausted; `check_input` itself is single-shot, no retry.
 
 ## Status: demo — no authentication, no authorization
 
-This is a demonstration project. It has **no authentication and no authorization**:
-there is no user, no session, and no owner attached to a thread. Every endpoint is
-open to whoever can reach the port, and `thread_id` is a bearer of nothing — it
-identifies a conversation, it does not protect one.
+This project exists to demonstrate two things: the execution harness (`.claude/`)
+that drives all development here, and a multi-agent MCP orchestration system
+(master orchestrator + parallel sub-agents + guardrails). Both of those are the
+point of the repo. Authentication and authorization are **intentionally out of
+scope** for that purpose — not an oversight to be fixed, but a deliberate choice
+to keep setup to `cp .env.example .env && make up` instead of adding accounts,
+sessions, and login flows for whoever just wants to run and study the code.
 
-Concretely, on an exposed deployment any caller can spend the LLM budget on your API
-keys, read any conversation by guessing or replaying its `thread_id`, and delete any
-thread the same way. Run it on localhost or behind your own authenticating proxy.
+Concretely, that means: there is no user, no session, and no owner attached to a
+thread; every endpoint is open to whoever can reach the port; and `thread_id` is a
+bearer of nothing — it identifies a conversation, it does not protect one. On an
+exposed deployment, any caller can spend the LLM budget on your API keys, read any
+conversation by guessing or replaying its `thread_id`, and delete any thread the
+same way. Run it on localhost or behind your own authenticating proxy; adding
+auth is out of scope for this demo, not a roadmap item.
 
 ## Quick start
 
