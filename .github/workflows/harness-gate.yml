@@ -12,3 +12,23 @@ jobs:
           python-version: "3.14"
       - name: Enforce artifact-harness invariants
         run: python3 .claude/scripts/ci_check.py
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install backend deps
+        run: make dev-install-backend PYTHON=python3
+      - name: Install mcp deps
+        run: make dev-install-mcp PYTHON=python3
+      - name: Install frontend deps
+        run: make dev-install-frontend
+      - name: Run backend pytest
+        run: backend/.venv/bin/pytest backend
+      - name: Run mcp pytest
+        run: mcp/.venv/bin/pytest mcp
+      - name: Run frontend jest
+        run: pnpm --dir frontend test

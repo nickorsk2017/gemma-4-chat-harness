@@ -51,6 +51,12 @@ re-checks repo-wide invariants (no ESCALATED task, no non-empty open_issues, DON
 and is run by `.github/workflows/harness-gate.yml` on push/PR — that gate is not
 bypassable and is the authoritative barrier.
 
+`harness-gate.yml` also runs the project's own test suites as independent steps in the
+same job: backend pytest, mcp pytest, frontend jest (via the existing `make dev-install-*`
+targets). This is separate from `ci_check.py`, which only checks harness state — a task
+being well-formed (DONE/PASS) does not imply its code passes tests, and vice versa; both
+must pass for the build to go green.
+
 ## Crash Recovery
 Writes are sequential, not transactional. If an invocation died mid-step:
 - artifact written but `STATE.yaml` not advanced -> re-run the STATE update only.
