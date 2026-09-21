@@ -5,9 +5,10 @@ description = "Gemma tool-calling orchestrator over the sub-agent MCP servers."
 requires-python = ">=3.14"
 dependencies = [
     "agent-core",
-    "fastmcp>=2.0.0",
+    "fastmcp>=2.0.0,<4.0.0",
+    "mcp>=1.24.0,<2.0.0",
     "langchain-core>=0.3.0",
-    "langchain-mcp-adapters>=0.1.0",
+    "langchain-mcp-adapters>=0.3.2,<0.4.0",
     "langgraph>=0.2.0",
     "langgraph-checkpoint-postgres>=2.0.0",
     # AsyncPostgresSaver talks to Postgres via psycopg 3. The `[binary]` extra

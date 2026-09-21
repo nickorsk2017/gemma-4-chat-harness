@@ -4,7 +4,13 @@ version = "0.1.0"
 description = "Shared MCP envelope, LLM factory, HTTP server and guardrails client for the agent fleet"
 requires-python = ">=3.14"
 dependencies = [
-    "fastmcp>=2.0.0",
+    # fastmcp 4.x depends on the mcp SDK 2.x line, which removed
+    # `mcp.shared.context.RequestContext`; langchain-mcp-adapters imports that name
+    # and requires mcp<2.0.0. The fleet therefore stays on fastmcp 3.x / mcp 1.x.
+    # The whole image resolves from the first `pip install`, so every distribution
+    # carries the same bound.
+    "fastmcp>=2.0.0,<4.0.0",
+    "mcp>=1.24.0,<2.0.0",
     "pydantic>=2.0.0",
     "langchain-core>=0.3.0",
     "langchain-openai>=0.3.0",
