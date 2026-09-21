@@ -18,7 +18,7 @@ class FakeClient:
         self.deleted: list[str] = []
         self._delete_ok = delete_ok
 
-    async def send(self, prompt, file=None, thread_id=None):
+    async def send(self, prompt, file=None, thread_id=None, is_retry=False):
         self.seen.append(thread_id)
         # The agent generates a thread_id when none was sent and returns it.
         returned = thread_id or "agent-generated"

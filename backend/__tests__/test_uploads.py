@@ -31,7 +31,7 @@ class _CaptureClient:
     def __init__(self) -> None:
         self.sent: list[FilePayload | None] = []
 
-    async def send(self, prompt, file=None, thread_id=None):
+    async def send(self, prompt, file=None, thread_id=None, is_retry=False):
         self.sent.append(file)
         return AgentOutcome(ok=True, data={"answer": "ok", "thread_id": "t"})
 
