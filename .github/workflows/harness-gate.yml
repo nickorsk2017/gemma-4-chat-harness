@@ -26,6 +26,10 @@ jobs:
         run: make dev-install-mcp PYTHON=python3
       - name: Install frontend deps
         run: make dev-install-frontend
+      - name: Install test deps
+        run: |
+          backend/.venv/bin/pip install -q "pytest>=8.0.0" "pytest-asyncio>=0.23.0"
+          mcp/.venv/bin/pip install -q "pytest>=8.0.0" "pytest-asyncio>=0.23.0"
       - name: Run backend pytest
         run: backend/.venv/bin/pytest backend
       - name: Run mcp pytest
