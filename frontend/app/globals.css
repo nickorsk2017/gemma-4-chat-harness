@@ -1,19 +1,66 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --page: #f1f3f9;
+  --surface: #ffffff;
+  --foreground: #101426;
+  --muted: #7a8194;
+  --hairline: #e6e9f0;
+  --accent: #3a45e0;
+  --accent-foreground: #ffffff;
+  --accent-soft: #e8eafc;
+  --bubble-agent: #eef0f6;
+  --bubble-agent-foreground: #101426;
+  --warning: #b45309;
+  --danger: #c2334d;
+  --danger-soft: #fdecef;
+  --radius-card: 22px;
+  --radius-bubble: 20px;
+  --radius-control: 14px;
+  --shadow-card: 0 18px 50px -24px rgba(16, 20, 38, 0.28);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --page: #0b0d14;
+    --surface: #14171f;
+    --foreground: #eef0f6;
+    --muted: #8d94a6;
+    --hairline: #242833;
+    --accent: #5560f0;
+    --accent-foreground: #ffffff;
+    --accent-soft: #1d2140;
+    --bubble-agent: #1d212b;
+    --bubble-agent-foreground: #eef0f6;
+    --warning: #f0b95c;
+    --danger: #f08a9c;
+    --danger-soft: #2a1820;
+    --shadow-card: 0 18px 50px -24px rgba(0, 0, 0, 0.7);
   }
 }
 
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-hairline: var(--hairline);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-bubble-agent: var(--bubble-agent);
+  --color-bubble-agent-foreground: var(--bubble-agent-foreground);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --radius-card: var(--radius-card);
+  --radius-bubble: var(--radius-bubble);
+  --radius-control: var(--radius-control);
+  --shadow-card: var(--shadow-card);
+}
+
 body {
-  background: var(--background);
+  background: var(--page);
   color: var(--foreground);
   font-family: system-ui, -apple-system, sans-serif;
 }

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import type { ChatRole, GuardrailInfo } from "@/types/chat";
 import { useTypewriter } from "@/shared/ui-kit/useTypewriter";
+import { Markdown } from "@/shared/ui-kit/Markdown";
 
 interface MessageBubbleProps {
   role: ChatRole;
@@ -32,7 +33,7 @@ function GuardrailNote({ info }: { info: GuardrailInfo }) {
 
   return (
     <div
-      className="mt-2 border-t border-gray-300 pt-1.5 text-xs text-gray-500 dark:border-gray-600 dark:text-gray-400"
+      className="mt-2 border-t border-hairline pt-1.5 text-xs text-muted"
       role="note"
     >
       {lines.map((line, i) => (
@@ -60,51 +61,49 @@ export function MessageBubble({
     if (animate && !done) onTypingTick?.();
   }, [visible, animate, done, onTypingTick]);
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={[
-          "max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm leading-relaxed",
-          isUser
-            ? "rounded-br-sm bg-blue-600 text-white"
-            : "rounded-bl-sm bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100",
-        ].join(" ")}
-      >
-        {attachments && attachments.length > 0 && (
-          <ul className="mb-1.5 flex flex-wrap gap-1.5" aria-label="Attachments">
-            {attachments.map((name, i) => (
-              <li
-                key={`${name}-${i}`}
-                className={[
-                  "rounded-md px-1.5 py-0.5 text-xs",
-                  isUser
-                    ? "bg-blue-500/60 text-blue-50"
-                    : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
-                ].join(" ")}
-              >
-                📄 {name}
-              </li>
-            ))}
-          </ul>
-        )}
-        {visible}
-        {!isUser && guardrails && <GuardrailNote info={guardrails} />}
-        {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            disabled={retryDisabled}
-            className="mt-2 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-          >
-            Retry
-          </button>
-        )}
-        {animate && !done && (
-          <span
-            aria-hidden="true"
-            className="ml-0.5 inline-block h-[1em] w-[2px] animate-pulse bg-current align-text-bottom"
-          />
-        )}
-      </div>
+    <div
+      className={[
+        "w-fit break-words px-4 py-2.5 text-sm leading-relaxed rounded-bubble",
+        isUser
+          ? "whitespace-pre-wrap bg-accent font-semibold text-accent-foreground"
+          : "bg-bubble-agent text-bubble-agent-foreground",
+      ].join(" ")}
+    >
+      {attachments && attachments.length > 0 && (
+        <ul className="mb-1.5 flex flex-wrap gap-1.5" aria-label="Attachments">
+          {attachments.map((name, i) => (
+            <li
+              key={`${name}-${i}`}
+              className={[
+                "rounded-md px-1.5 py-0.5 text-xs font-normal",
+                isUser
+                  ? "bg-white/20 text-accent-foreground"
+                  : "bg-surface text-muted",
+              ].join(" ")}
+            >
+              {name}
+            </li>
+          ))}
+        </ul>
+      )}
+      {isUser ? visible : <Markdown source={visible} />}
+      {!isUser && guardrails && <GuardrailNote info={guardrails} />}
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retryDisabled}
+          className="mt-2 rounded-control border border-hairline px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-surface disabled:opacity-50"
+        >
+          Retry
+        </button>
+      )}
+      {animate && !done && (
+        <span
+          aria-hidden="true"
+          className="ml-0.5 inline-block h-[1em] w-[2px] animate-pulse bg-current align-text-bottom"
+        />
+      )}
     </div>
   );
 }

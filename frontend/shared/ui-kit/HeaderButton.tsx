@@ -7,6 +7,8 @@ interface HeaderButtonProps {
   disabled?: boolean;
   /** Accessible name when the label alone is not descriptive enough. */
   ariaLabel?: string;
+  /** Decorative glyph rendered before the label. */
+  icon?: React.ReactNode;
 }
 
 /** Presentational compact action button for header bars. No store access. */
@@ -15,6 +17,7 @@ export function HeaderButton({
   onClick,
   disabled = false,
   ariaLabel,
+  icon,
 }: HeaderButtonProps) {
   return (
     <button
@@ -22,8 +25,9 @@ export function HeaderButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel ?? label}
-      className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+      className="flex items-center gap-2 rounded-full border border-hairline px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-page disabled:cursor-not-allowed disabled:opacity-50"
     >
+      {icon}
       {label}
     </button>
   );

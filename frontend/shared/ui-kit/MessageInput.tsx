@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type KeyboardEvent } from "react";
+import { PaperclipIcon, SendIcon } from "@/shared/ui-kit/icons";
 
 const ACCEPTED_TYPES =
   "application/pdf,image/png,image/jpeg,image/webp,image/gif";
@@ -63,14 +64,14 @@ export function MessageInput({
           {files.map((file, i) => (
             <li
               key={`${file.name}-${i}`}
-              className="flex items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              className="flex items-center gap-1.5 rounded-control bg-page px-2.5 py-1 text-xs text-foreground"
             >
               <span className="max-w-40 truncate">{file.name}</span>
               <button
                 type="button"
                 aria-label={`Remove ${file.name}`}
                 onClick={() => removeFile(i)}
-                className="text-gray-400 hover:text-red-500"
+                className="text-muted transition-colors hover:text-danger"
               >
                 ×
               </button>
@@ -80,12 +81,12 @@ export function MessageInput({
       )}
 
       {files.length > 0 && value.trim().length === 0 && (
-        <p className="text-xs text-amber-600 dark:text-amber-400">
+        <p className="px-1 text-xs text-warning">
           Add a text prompt — the file can’t be sent on its own.
         </p>
       )}
 
-      <div className="flex items-end gap-2">
+      <div className="flex items-end gap-3 rounded-card border border-hairline bg-surface p-2">
         <input
           ref={fileInputRef}
           type="file"
@@ -100,9 +101,9 @@ export function MessageInput({
           title="Attach image or PDF (one file — a new pick replaces it)"
           disabled={disabled}
           onClick={() => fileInputRef.current?.click()}
-          className="h-11 shrink-0 rounded-xl border border-gray-300 px-3 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-hairline text-muted transition-colors hover:bg-page hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         >
-          📎
+          <PaperclipIcon className="h-5 w-5" />
         </button>
         <textarea
           aria-label="Message"
@@ -112,15 +113,16 @@ export function MessageInput({
           placeholder={placeholder}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={onKeyDown}
-          className="max-h-40 min-h-11 flex-1 resize-none rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-blue-500 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+          className="max-h-40 min-h-11 flex-1 resize-none self-center rounded-full border border-hairline bg-surface px-4 py-3 text-sm text-foreground placeholder:text-muted outline-none transition-colors focus:border-accent disabled:opacity-60"
         />
         <button
           type="button"
           onClick={submit}
+          aria-label="Send message"
           disabled={!canSubmit}
-          className="h-11 shrink-0 rounded-xl bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control bg-accent text-accent-foreground transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Send
+          <SendIcon className="h-5 w-5" />
         </button>
       </div>
     </div>
