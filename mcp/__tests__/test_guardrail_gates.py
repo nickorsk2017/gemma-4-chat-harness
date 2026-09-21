@@ -1,7 +1,7 @@
 """Enforcement points (a), (b) and (c) — asserted at the boundaries that matter.
 
 These tests are deliberately not about whether the guardrails service classifies
-correctly (that is covered in ``guardrails/tests``). They are about whether the
+correctly (that is covered in ``guardrails/__tests__``). They are about whether the
 callers *honour* the verdict, and about the ordering property PLAN D5a states:
 the gate runs before anything is persisted, not merely before the model is called.
 A test that only checked the model call would pass on an implementation that

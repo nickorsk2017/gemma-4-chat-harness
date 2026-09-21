@@ -18,7 +18,7 @@ import pytest
 
 from guardrails.schemas.verdict import Category, CheckRequest, Decision, Surface
 from guardrails.services import pipeline
-from guardrails.tests.fixtures.injection import INJECTIONS, INJECTION_BENIGN
+from guardrails.__tests__.fixtures.injection import INJECTIONS, INJECTION_BENIGN
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("GEMMA_API_KEY"),
@@ -32,6 +32,7 @@ MIN_RECALL = 0.90
 MAX_FALSE_POSITIVE = 0.10
 
 
+@pytest.mark.asyncio
 async def test_injection_recall():
     missed: list[tuple[str, str]] = []
     for text, tag in INJECTIONS:
@@ -51,6 +52,7 @@ async def test_injection_recall():
     assert recall >= MIN_RECALL, f"recall {recall:.2%} below {MIN_RECALL:.0%}"
 
 
+@pytest.mark.asyncio
 async def test_control_set_is_not_blocked():
     """The half that actually constrains the design: our own documentation must pass."""
     blocked: list[str] = []

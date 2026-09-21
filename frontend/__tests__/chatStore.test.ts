@@ -80,6 +80,17 @@ describe("chatStore.send", () => {
   });
 });
 
+/**
+ * Wipe in-memory state while keeping what localStorage held before the wipe.
+ * `setState` goes through the persist middleware and overwrites storage, so the
+ * stored slice is captured first and restored afterwards, as a real reload would.
+ */
+function simulateReload() {
+  const stored = localStorage.getItem(CHAT_STORAGE_KEY);
+  useChatStore.setState({ messages: [], threadId: null, hydrated: false });
+  if (stored !== null) localStorage.setItem(CHAT_STORAGE_KEY, stored);
+}
+
 describe("chatStore persistence (localStorage)", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -104,7 +115,7 @@ describe("chatStore persistence (localStorage)", () => {
     await useChatStore.getState().send("Hello");
 
     // Simulate a reload: wipe in-memory state, keep localStorage.
-    useChatStore.setState({ messages: [], threadId: null, hydrated: false });
+    simulateReload();
     await useChatStore.persist.rehydrate();
 
     const state = useChatStore.getState();
@@ -117,7 +128,7 @@ describe("chatStore persistence (localStorage)", () => {
 
   it("continues the same thread after rehydrate", async () => {
     await useChatStore.getState().send("Hello");
-    useChatStore.setState({ messages: [], threadId: null, hydrated: false });
+    simulateReload();
     await useChatStore.persist.rehydrate();
 
     await useChatStore.getState().send("And again");

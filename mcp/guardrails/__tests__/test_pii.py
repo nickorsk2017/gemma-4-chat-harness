@@ -4,7 +4,7 @@ import pytest
 
 from guardrails.detectors import pii
 from guardrails.schemas.verdict import PII_NOTICE_TEMPLATE
-from guardrails.tests.fixtures.corpus import PII_CASES
+from guardrails.__tests__.fixtures.corpus import PII_CASES
 
 
 @pytest.mark.parametrize("entity,text,value", PII_CASES, ids=[c[0] for c in PII_CASES])

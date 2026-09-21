@@ -5,7 +5,7 @@ import pytest
 from guardrails.data.lexicon import MEDICAL_SIGNALS
 from guardrails.detectors.lexicon import scan
 from guardrails.schemas.verdict import Category
-from guardrails.tests.fixtures.corpus import BANNED, BENIGN, MEDICAL, MEDICAL_CLEAN
+from guardrails.__tests__.fixtures.corpus import BANNED, BENIGN, MEDICAL, MEDICAL_CLEAN
 
 
 @pytest.mark.parametrize("text,category,tag", BANNED, ids=[f"{c}-{t}" for _, c, t in BANNED])

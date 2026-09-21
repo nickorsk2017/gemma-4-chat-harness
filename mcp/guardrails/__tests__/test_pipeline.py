@@ -18,7 +18,7 @@ from guardrails.schemas.verdict import (
     Surface,
 )
 from guardrails.services import pipeline
-from guardrails.tests.fixtures.corpus import BANNED, BENIGN, MEDICAL, MEDICAL_CLEAN
+from guardrails.__tests__.fixtures.corpus import BANNED, BENIGN, MEDICAL, MEDICAL_CLEAN
 
 
 def stub_judge(monkeypatch, verdict):
@@ -30,6 +30,7 @@ def stub_judge(monkeypatch, verdict):
 
 
 @pytest.mark.parametrize("text,category,tag", BANNED, ids=[f"{c}-{t}" for _, c, t in BANNED])
+@pytest.mark.asyncio
 async def test_banned_input_is_blocked(monkeypatch, text, category, tag):
     stub_judge(monkeypatch, JudgeVerdict([Category(category)], {category: 0.95}, False, "policy"))
     verdict = await pipeline.check(CheckRequest(text=text, source="test"))
@@ -38,6 +39,7 @@ async def test_banned_input_is_blocked(monkeypatch, text, category, tag):
 
 
 @pytest.mark.parametrize("text", BENIGN)
+@pytest.mark.asyncio
 async def test_benign_input_passes_untouched(monkeypatch, text):
     stub_judge(monkeypatch, JudgeVerdict([], {}, False, ""))
     verdict = await pipeline.check(CheckRequest(text=text, source="test"))
@@ -47,6 +49,7 @@ async def test_benign_input_passes_untouched(monkeypatch, text):
 
 
 @pytest.mark.parametrize("text,signal", MEDICAL, ids=[s for _, s in MEDICAL])
+@pytest.mark.asyncio
 async def test_medical_is_answered_with_a_disclaimer(monkeypatch, text, signal):
     """TASK A3-5: the doctor reading the answer is the human in the loop, so the turn
     proceeds and carries the disclaimer — it is never refused and never held."""
@@ -58,6 +61,7 @@ async def test_medical_is_answered_with_a_disclaimer(monkeypatch, text, signal):
 
 
 @pytest.mark.parametrize("text", MEDICAL_CLEAN)
+@pytest.mark.asyncio
 async def test_clinical_question_without_a_substance_is_simply_allowed(monkeypatch, text):
     """Holding every medical question for a human would be its own failure mode."""
     stub_judge(monkeypatch, JudgeVerdict([], {}, True, ""))
@@ -65,6 +69,7 @@ async def test_clinical_question_without_a_substance_is_simply_allowed(monkeypat
     assert verdict.decision is Decision.ALLOWED
 
 
+@pytest.mark.asyncio
 async def test_procurement_dressed_as_medical_is_still_blocked(monkeypatch):
     """The judge, not the lexicon, is what separates these two."""
     stub_judge(monkeypatch, JudgeVerdict([Category.DRUGS], {"drugs": 0.9}, False, "procurement"))
@@ -73,6 +78,7 @@ async def test_procurement_dressed_as_medical_is_still_blocked(monkeypatch):
     assert verdict.decision is Decision.BLOCKED
 
 
+@pytest.mark.asyncio
 async def test_judge_unavailable_fails_closed_on_input(monkeypatch):
     """TASK R8: no opinion is not a clean bill of health."""
     stub_judge(monkeypatch, None)
@@ -82,6 +88,7 @@ async def test_judge_unavailable_fails_closed_on_input(monkeypatch):
     assert verdict.decision is Decision.BLOCKED
 
 
+@pytest.mark.asyncio
 async def test_judge_unavailable_on_medical_answers_rather_than_blocks(monkeypatch):
     """A3-5 is more specific than R8: a patient is not refused because the judge is down."""
     stub_judge(monkeypatch, None)
@@ -91,6 +98,7 @@ async def test_judge_unavailable_on_medical_answers_rather_than_blocks(monkeypat
     assert verdict.notice and MEDICAL_DISCLAIMER in verdict.notice
 
 
+@pytest.mark.asyncio
 async def test_pii_is_redacted_before_the_judge_ever_sees_the_text(monkeypatch):
     """Ordering guarantee: the judge is a third-party call and must never see raw PII."""
     seen = {}
@@ -109,6 +117,7 @@ async def test_pii_is_redacted_before_the_judge_ever_sees_the_text(monkeypatch):
     assert verdict.notice and verdict.notice.startswith("Note: the user's personal data")
 
 
+@pytest.mark.asyncio
 async def test_output_path_catches_a_leaked_value(monkeypatch):
     stub_judge(monkeypatch, JudgeVerdict([], {}, False, ""))
     verdict = await pipeline.check(
@@ -122,6 +131,7 @@ async def test_output_path_catches_a_leaked_value(monkeypatch):
     assert "+7 916 123-45-67" not in verdict.text
 
 
+@pytest.mark.asyncio
 async def test_the_medical_path_still_redacts_and_keeps_both_notices(monkeypatch):
     """TASK R11 does not relax because the topic is clinical: the phone number is still
     removed, and the redaction notice is not displaced by the disclaimer."""
@@ -139,6 +149,7 @@ async def test_the_medical_path_still_redacts_and_keeps_both_notices(monkeypatch
 # --- injection, surfaces and the fence (TASK A3-2, R4; PLAN D13, D17) ----------------
 
 
+@pytest.mark.asyncio
 async def test_injection_is_blocked(monkeypatch):
     """The model decides this one; no keyword list is consulted (TASK A3-2)."""
     stub_judge(
@@ -152,6 +163,7 @@ async def test_injection_is_blocked(monkeypatch):
     assert Category.INJECTION in verdict.categories
 
 
+@pytest.mark.asyncio
 async def test_discussing_injection_is_not_attempting_it(monkeypatch):
     """The property A2 measures: this repository's own documentation must pass.
 
@@ -167,6 +179,7 @@ async def test_discussing_injection_is_not_attempting_it(monkeypatch):
     assert verdict.decision is Decision.ALLOWED
 
 
+@pytest.mark.asyncio
 async def test_the_model_sees_the_surface(monkeypatch):
     """A PDF has no standing to instruct anyone, and the model is told where text came
     from so it can say so."""
@@ -181,6 +194,7 @@ async def test_the_model_sees_the_surface(monkeypatch):
     assert seen["surface"] is Surface.DOCUMENT
 
 
+@pytest.mark.asyncio
 async def test_untrusted_text_comes_back_fenced(monkeypatch):
     stub_judge(monkeypatch, JudgeVerdict([], {}, False, ""))
     verdict = await pipeline.check(
@@ -192,6 +206,7 @@ async def test_untrusted_text_comes_back_fenced(monkeypatch):
     assert verdict.text.count("<<<UNTRUSTED-") == 2
 
 
+@pytest.mark.asyncio
 async def test_a_prompt_is_not_fenced(monkeypatch):
     """Fencing marks text as data. A user's own message is not that."""
     stub_judge(monkeypatch, JudgeVerdict([], {}, False, ""))
@@ -200,6 +215,7 @@ async def test_a_prompt_is_not_fenced(monkeypatch):
     assert verdict.text == "привет"
 
 
+@pytest.mark.asyncio
 async def test_the_fence_cannot_be_closed_from_inside(monkeypatch):
     """TASK A5. The nonce is unguessable, but that is not what makes this hold — any
     marker-shaped string in the untrusted text is stripped before wrapping."""
@@ -212,6 +228,7 @@ async def test_the_fence_cannot_be_closed_from_inside(monkeypatch):
     assert "deadbeef" not in verdict.text
 
 
+@pytest.mark.asyncio
 async def test_blocked_text_is_not_fenced(monkeypatch):
     """Blocked text does not travel, so there is nothing to mark as data."""
     stub_judge(
@@ -224,6 +241,7 @@ async def test_blocked_text_is_not_fenced(monkeypatch):
     assert verdict.system_note is None
 
 
+@pytest.mark.asyncio
 async def test_the_model_edits_by_substring_not_by_offset(monkeypatch):
     """PLAN D13: the model returns substrings and the gate does the replacing. Offsets
     would be computed against the window it saw, not the full text."""
@@ -242,6 +260,7 @@ async def test_the_model_edits_by_substring_not_by_offset(monkeypatch):
 # --- unstructured PII, which is the model's half (TASK A9-1) -------------------------
 
 
+@pytest.mark.asyncio
 async def test_the_model_masks_a_name_and_the_notice_names_the_type(monkeypatch):
     stub_judge(
         monkeypatch,
@@ -254,6 +273,7 @@ async def test_the_model_masks_a_name_and_the_notice_names_the_type(monkeypatch)
     assert "PERSON" in (verdict.notice or "")
 
 
+@pytest.mark.asyncio
 async def test_model_pii_joins_the_deterministic_notice_rather_than_replacing_it(monkeypatch):
     """The notice must name *every* type removed. The deterministic pass has already
     written one by the time the model answers, so this is a rebuild, not an append."""
@@ -269,6 +289,7 @@ async def test_model_pii_joins_the_deterministic_notice_rather_than_replacing_it
     assert "PERSON, PHONE_NUMBER" in verdict.notice
 
 
+@pytest.mark.asyncio
 async def test_a_span_the_model_invented_is_ignored(monkeypatch):
     """The gate replaces substrings it can find. A hallucinated one is not in the text,
     and must not become a redaction that never happened."""
@@ -282,6 +303,7 @@ async def test_a_span_the_model_invented_is_ignored(monkeypatch):
     assert verdict.notice is None
 
 
+@pytest.mark.asyncio
 async def test_model_pii_can_be_turned_off(monkeypatch):
     monkeypatch.setattr(settings, "pii_model_entities", False)
     stub_judge(
@@ -292,6 +314,7 @@ async def test_model_pii_can_be_turned_off(monkeypatch):
     assert "Иван Петров" in verdict.text
 
 
+@pytest.mark.asyncio
 async def test_a_junk_entity_type_falls_back_rather_than_corrupting_the_placeholder(monkeypatch):
     """The type goes straight into `<...>` and into the R5 notice, so it is sanitised."""
     stub_judge(
@@ -311,6 +334,7 @@ async def test_a_junk_entity_type_falls_back_rather_than_corrupting_the_placehol
 # behaviour could regress silently.
 
 
+@pytest.mark.asyncio
 async def test_an_undetectable_passport_number_is_masked_by_the_model(monkeypatch):
     """A1: the reported defect. The value matches no pattern — 8 digits is not a RU
     passport — so the deterministic layer cannot see it and the model is the only layer
@@ -334,6 +358,7 @@ async def test_an_undetectable_passport_number_is_masked_by_the_model(monkeypatc
     assert verdict.redactions[0].count == 2
 
 
+@pytest.mark.asyncio
 async def test_a_foreign_identifier_is_masked_as_itself_not_as_a_person(monkeypatch):
     """A2, and the reason ID_NUMBER had to join `_MODEL_PII_TYPES` in the same change:
     without it this masks correctly but reports the DNI as somebody's name."""
@@ -347,6 +372,7 @@ async def test_a_foreign_identifier_is_masked_as_itself_not_as_a_person(monkeypa
     assert "ID_NUMBER" in (verdict.notice or "")
 
 
+@pytest.mark.asyncio
 async def test_a_well_formed_ru_type_still_resolves_deterministically(monkeypatch):
     """A4: the pattern layer keeps its own entity names and its checksum promotion. The
     model layer is an addition, not a replacement."""
@@ -356,6 +382,7 @@ async def test_a_well_formed_ru_type_still_resolves_deterministically(monkeypatc
     assert "+7 916 123-45-67" not in verdict.text
 
 
+@pytest.mark.asyncio
 async def test_an_ordinary_number_is_left_alone(monkeypatch):
     """A3: nothing ties these to a person, so the model reports nothing and the cascade
     invents nothing. The cost of the new instruction is false positives; this is the test
@@ -368,6 +395,7 @@ async def test_an_ordinary_number_is_left_alone(monkeypatch):
     assert verdict.notice is None
 
 
+@pytest.mark.asyncio
 async def test_an_identifier_turn_is_refused_when_the_judge_is_down(monkeypatch):
     """A5: with the model gone there is no layer left that can see this value, so the
     input path refuses rather than passing it to the answering model."""
