@@ -1,3 +1,5 @@
+![Gemma 4 chat UI](docs/screenshot.png)
+
 # agent-chat
 
 AI-agent chat system: a web chat where one **master orchestrator** splits each user
@@ -32,10 +34,10 @@ Browser ── Next.js frontend (:3000)
 
 Every agent turn passes through the `guardrails` MCP service (`mcp/guardrails/`,
 port 8200, two tools: `check_input` / `check_output`). It screens for prompt
-injection, sexual/drug content, and PII: structured PII (RU phone, RU passport,
-SNILS, INN, email, credit card, IBAN) is caught deterministically by regex +
-checksum, everything else (injection, sexual/drug content, unstructured PII like
-names) by LLM judgment. PII is redacted in place with a notice; other categories
+injection, sexual/drug content, and PII: structured PII (email, credit card, IBAN)
+is caught deterministically by regex + checksum, everything else (injection,
+sexual/drug content, unstructured PII like names, addresses and identity or
+document numbers) by LLM judgment. PII is redacted in place with a notice; other categories
 block the request.
 
 Coverage differs by call site: `master_orchestrator` gates every user prompt

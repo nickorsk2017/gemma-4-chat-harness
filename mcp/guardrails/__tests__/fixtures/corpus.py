@@ -112,13 +112,9 @@ BENIGN: list[str] = [
 ]
 
 # TASK A2 — one valid instance per required type. Values are synthetic.
-# SNILS/INN carry real check digits so the checksum validators are actually exercised.
+# Card/IBAN carry real check digits so the checksum validators are actually exercised.
 PII_CASES: list[tuple[str, str, str]] = [
-    ("PHONE_NUMBER", "мой телефон +7 916 123-45-67, перезвоните", "+7 916 123-45-67"),
     ("EMAIL_ADDRESS", "пишите на ivan.petrov@example.com пожалуйста", "ivan.petrov@example.com"),
     ("CREDIT_CARD", "карта 4111 1111 1111 1111 срок до 05/28", "4111 1111 1111 1111"),
     ("IBAN_CODE", "счёт DE89370400440532013000 в немецком банке", "DE89370400440532013000"),
-    ("RU_PASSPORT", "паспорт серия 45 05 № 123456 выдан ОВД", "45 05 № 123456"),
-    ("RU_SNILS", "мой снилс 112-233-445 95 для справки", "112-233-445 95"),
-    ("RU_INN", "инн 500100732259 для договора", "500100732259"),
 ]

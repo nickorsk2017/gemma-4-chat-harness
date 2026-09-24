@@ -77,9 +77,9 @@ async def test_document_pii_is_redacted_before_the_llm(monkeypatch, llm_spy):
         assert "+7 916 123-45-67" in text, "the gate was not given the extracted text"
         return Verdict(
             decision=Decision.ALLOWED,
-            text="сделай выжимку\n\nконтакт <PHONE_NUMBER>",
-            redactions=[Redaction(type="PHONE_NUMBER", count=1)],
-            notice="Note: the user's personal data (PHONE_NUMBER) was not passed "
+            text="сделай выжимку\n\nконтакт <EMAIL_ADDRESS>",
+            redactions=[Redaction(type="EMAIL_ADDRESS", count=1)],
+            notice="Note: the user's personal data (EMAIL_ADDRESS) was not passed "
             "to the system, per policy.",
         )
 
@@ -91,5 +91,5 @@ async def test_document_pii_is_redacted_before_the_llm(monkeypatch, llm_spy):
 
     sent = " ".join(str(m.content) for m in llm_spy[0])
     assert "+7 916 123-45-67" not in sent
-    assert "<PHONE_NUMBER>" in sent
+    assert "<EMAIL_ADDRESS>" in sent
     assert "per policy." in sent

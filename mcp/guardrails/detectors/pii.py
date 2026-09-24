@@ -2,16 +2,17 @@
 
 Two kinds of personal data, and only one of them belongs to a library.
 
-**Structured** — phone, RU passport, SNILS, INN, email, card, IBAN — is a pattern plus a
-checksum. Deterministic, offline, and testable by the strongest assertion available: the
-original value appears nowhere in the output. A nine-digit run is not a SNILS; without the
-check digit the false-positive rate on ordinary numbers makes redaction worse than useless.
-That is this module.
+**Structured** — email, card, IBAN — is a pattern, plus a checksum where the format has
+one. Deterministic, offline, and testable by the strongest assertion available: the
+original value appears nowhere in the output. A sixteen-digit run is not a card; without
+the check digit the false-positive rate on ordinary numbers makes redaction worse than
+useless. That is this module.
 
-**Unstructured** — names, addresses — has no pattern to match and is not here. It is the
-model's job (see ``detectors/judge.py``), because the only alternative was spaCy, and
-spaCy is a statistical model too: same class of guarantee as an LLM, weaker on Russian, and
-carrying presidio, thinc, blis and two model downloads behind it.
+**Unstructured** — names, addresses, identity and document numbers — has no pattern to
+match and is not here. It is the model's job (see ``detectors/judge.py``), because the
+only alternative was spaCy, and spaCy is a statistical model too: same class of guarantee
+as an LLM, weaker on Russian, and carrying presidio, thinc, blis and two model downloads
+behind it.
 
 Presidio is gone with it — not by preference but by construction: `presidio-analyzer`
 depends on spaCy unconditionally, so the two could not be separated. What it actually
@@ -28,49 +29,13 @@ from dataclasses import dataclass
 from guardrails.config import settings
 from guardrails.schemas.verdict import PII_NOTICE_TEMPLATE, Redaction
 
-BUILTIN_ENTITIES = ["PHONE_NUMBER", "EMAIL_ADDRESS", "CREDIT_CARD", "IBAN_CODE"]
-RU_ENTITIES = ["RU_PASSPORT", "RU_SNILS", "RU_INN"]
-ENTITIES = BUILTIN_ENTITIES + RU_ENTITIES
+ENTITIES = ["EMAIL_ADDRESS", "CREDIT_CARD", "IBAN_CODE"]
 
 
 # --- checksum validators ------------------------------------------------------------
 
 def _digits(value: str) -> list[int]:
     return [int(c) for c in value if c.isdigit()]
-
-
-def valid_snils(value: str) -> bool:
-    """SNILS check digits: weighted sum of the first nine digits, mod 101."""
-    d = _digits(value)
-    if len(d) != 11:
-        return False
-    body, check = d[:9], d[9] * 10 + d[10]
-    total = sum(digit * (9 - i) for i, digit in enumerate(body))
-    if total < 100:
-        expected = total
-    elif total in (100, 101):
-        expected = 0
-    else:
-        expected = total % 101
-        if expected in (100, 101):
-            expected = 0
-    return expected == check
-
-
-def valid_inn(value: str) -> bool:
-    """INN check digits, both the 10-digit (legal entity) and 12-digit (person) forms."""
-    d = _digits(value)
-
-    def weighted(weights: list[int], upto: int) -> int:
-        return sum(w * d[i] for i, w in enumerate(weights[:upto])) % 11 % 10
-
-    if len(d) == 10:
-        return weighted([2, 4, 10, 3, 5, 9, 4, 6, 8], 9) == d[9]
-    if len(d) == 12:
-        first = weighted([7, 2, 4, 10, 3, 5, 9, 4, 6, 8], 10) == d[10]
-        second = weighted([3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8], 11) == d[11]
-        return first and second
-    return False
 
 
 def valid_luhn(value: str) -> bool:
@@ -105,17 +70,6 @@ def valid_iban(value: str) -> bool:
 
 # --- recognizers ----------------------------------------------------------------------
 
-_SNILS_PATTERN = r"\b\d{3}[- ]?\d{3}[- ]?\d{3}[- ]?\d{2}\b"
-_INN_PATTERN = r"\b\d{10}(?:\d{2})?\b"
-# Series + number. Requires either the classic 4+6 spacing or an explicit keyword,
-# because a bare ten-digit run is far more often something else.
-_PASSPORT_PATTERN = (
-    r"(?:(?:паспорт|passport|серия|series)\D{0,12})?\b\d{2}\s?\d{2}\s?[№N#]?\s?\d{6}\b"
-)
-# An explicit country-code or leading-8 anchor is required rather than a generic digit
-# run: without it the pattern would swallow SNILS and INN, which are also digit runs
-# with separators.
-_PHONE_PATTERN = r"(?:\+\d{1,3}|\b8)[\s\-(]*\d{3}[\s\-)]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}\b"
 _EMAIL_PATTERN = r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"
 # Both of these end on a digit/character rather than an optional separator: a trailing
 # `[ -]?` inside the repeat eats the space after the value, so the replacement silently
@@ -139,10 +93,6 @@ RECOGNIZERS: list[_Recognizer] = [
     _Recognizer("EMAIL_ADDRESS", re.compile(_EMAIL_PATTERN), 0.9),
     _Recognizer("IBAN_CODE", re.compile(_IBAN_PATTERN), 0.7, valid_iban),
     _Recognizer("CREDIT_CARD", re.compile(_CARD_PATTERN), 0.7, valid_luhn),
-    _Recognizer("RU_PASSPORT", re.compile(_PASSPORT_PATTERN, re.IGNORECASE), 0.5),
-    _Recognizer("PHONE_NUMBER", re.compile(_PHONE_PATTERN), 0.6),
-    _Recognizer("RU_SNILS", re.compile(_SNILS_PATTERN), 0.4, valid_snils),
-    _Recognizer("RU_INN", re.compile(_INN_PATTERN), 0.3, valid_inn),
 ]
 
 
@@ -158,11 +108,11 @@ def _scan(text: str) -> list[_Span]:
     """Find every candidate span, validate it, and score it.
 
     **A passing checksum promotes the span to certainty.** This is not a tweak — it is
-    what makes the low base scores mean anything. SNILS carries 0.4 and INN 0.3 because a
-    bare digit run of that shape is weak evidence on its own; once the check digits agree
-    it is no longer a guess, and the score threshold must not throw it away. (Presidio did
-    the same thing through `validate_result`; porting the numbers without the promotion is
-    how both types silently stopped being detected.)
+    what makes the base scores mean anything. Card and IBAN carry 0.7 because a digit run
+    of that shape is weak evidence on its own; once the check digits agree it is no longer
+    a guess, and the score threshold must not throw it away. (Presidio did the same thing
+    through `validate_result`; porting the numbers without the promotion is how validated
+    types silently stop being detected.)
     """
     spans: list[_Span] = []
     for rec in RECOGNIZERS:
@@ -237,8 +187,8 @@ def redact(text: str) -> PiiResult:
 
     # Overlaps must be resolved before replacement, or a nested match corrupts the
     # placeholder written by its neighbour. Earliest span wins; among spans starting
-    # together, the longer one, then the more confident one — a phone pattern and a
-    # SNILS pattern can cover the same digits and the wrong label would be recorded.
+    # together, the longer one, then the more confident one — a card pattern and an IBAN
+    # pattern can cover the same characters and the wrong label would be recorded.
     ordered = sorted(found, key=lambda s: (s.start, -(s.end - s.start), -s.score))
     kept: list[_Span] = []
     last_end = -1

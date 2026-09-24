@@ -110,10 +110,10 @@ async def test_pii_is_redacted_before_the_judge_ever_sees_the_text(monkeypatch):
     monkeypatch.setattr(pipeline.judge_layer, "judge", _judge)
 
     verdict = await pipeline.check(
-        CheckRequest(text="мой телефон +7 916 123-45-67, помоги", source="test")
+        CheckRequest(text="моя почта a.b@c.io, помоги", source="test")
     )
-    assert "+7 916 123-45-67" not in seen.get("text", "")
-    assert "PHONE_NUMBER" in [r.type for r in verdict.redactions]
+    assert "a.b@c.io" not in seen.get("text", "")
+    assert "EMAIL_ADDRESS" in [r.type for r in verdict.redactions]
     assert verdict.notice and verdict.notice.startswith("Note: the user's personal data")
 
 
@@ -122,25 +122,25 @@ async def test_output_path_catches_a_leaked_value(monkeypatch):
     stub_judge(monkeypatch, JudgeVerdict([], {}, False, ""))
     verdict = await pipeline.check(
         CheckRequest(
-            text="ваш номер +7 916 123-45-67",
+            text="ваша почта a.b@c.io",
             direction=Direction.OUTPUT,
             source="test",
-            known_pii_types=["PHONE_NUMBER"],
+            known_pii_types=["EMAIL_ADDRESS"],
         )
     )
-    assert "+7 916 123-45-67" not in verdict.text
+    assert "a.b@c.io" not in verdict.text
 
 
 @pytest.mark.asyncio
 async def test_the_medical_path_still_redacts_and_keeps_both_notices(monkeypatch):
-    """TASK R11 does not relax because the topic is clinical: the phone number is still
+    """TASK R11 does not relax because the topic is clinical: the email address is still
     removed, and the redaction notice is not displaced by the disclaimer."""
     stub_judge(monkeypatch, JudgeVerdict([Category.DRUGS], {"drugs": 0.8}, True, "clinical"))
-    text = "врач выписал морфин, мой телефон +7 916 123-45-67, есть побочные?"
+    text = "врач выписал морфин, моя почта a.b@c.io, есть побочные?"
     verdict = await pipeline.check(CheckRequest(text=text, source="test"))
     assert verdict.decision is Decision.ALLOWED
-    assert "+7 916 123-45-67" not in verdict.text
-    assert "PHONE_NUMBER" in [r.type for r in verdict.redactions]
+    assert "a.b@c.io" not in verdict.text
+    assert "EMAIL_ADDRESS" in [r.type for r in verdict.redactions]
     assert verdict.notice
     assert "Note: the user's personal data" in verdict.notice
     assert MEDICAL_DISCLAIMER in verdict.notice
@@ -282,11 +282,11 @@ async def test_model_pii_joins_the_deterministic_notice_rather_than_replacing_it
         JudgeVerdict([], {}, False, "", pii=[{"text": "Иван Петров", "type": "PERSON"}]),
     )
     verdict = await pipeline.check(
-        CheckRequest(text="Иван Петров, телефон +7 916 123-45-67")
+        CheckRequest(text="Иван Петров, почта a.b@c.io")
     )
     types = {r.type for r in verdict.redactions}
-    assert types == {"PERSON", "PHONE_NUMBER"}
-    assert "PERSON, PHONE_NUMBER" in verdict.notice
+    assert types == {"EMAIL_ADDRESS", "PERSON"}
+    assert "EMAIL_ADDRESS, PERSON" in verdict.notice
 
 
 @pytest.mark.asyncio
@@ -373,13 +373,13 @@ async def test_a_foreign_identifier_is_masked_as_itself_not_as_a_person(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_a_well_formed_ru_type_still_resolves_deterministically(monkeypatch):
-    """A4: the pattern layer keeps its own entity names and its checksum promotion. The
+async def test_a_well_formed_structured_type_still_resolves_deterministically(monkeypatch):
+    """The pattern layer keeps its own entity names and its checksum promotion. The
     model layer is an addition, not a replacement."""
     stub_judge(monkeypatch, JudgeVerdict([], {}, False, "", pii=[]))
-    verdict = await pipeline.check(CheckRequest(text="телефон +7 916 123-45-67"))
-    assert [r.type for r in verdict.redactions] == ["PHONE_NUMBER"]
-    assert "+7 916 123-45-67" not in verdict.text
+    verdict = await pipeline.check(CheckRequest(text="карта 4111 1111 1111 1111"))
+    assert [r.type for r in verdict.redactions] == ["CREDIT_CARD"]
+    assert "4111 1111 1111 1111" not in verdict.text
 
 
 @pytest.mark.asyncio

@@ -35,22 +35,24 @@ def test_clean_text_produces_no_notice():
     assert result.notice is None
 
 
-def test_snils_checksum_rejects_a_random_nine_digit_run():
-    """Without the checksum this layer would redact ordinary numbers as SNILS."""
-    assert pii.valid_snils("112-233-445 95")
-    assert not pii.valid_snils("111-111-111 11")
-
-
-def test_inn_checksum_both_forms():
-    assert pii.valid_inn("500100732259")   # 12-digit, person
-    assert pii.valid_inn("7830002293")     # 10-digit, legal entity
-    assert not pii.valid_inn("1234567890")
+@pytest.mark.parametrize(
+    "text",
+    [
+        "мой телефон +7 916 123-45-67, перезвоните",
+        "паспорт серия 45 05 № 123456 выдан ОВД",
+        "мой снилс 112-233-445 95 для справки",
+        "инн 500100732259 для договора",
+    ],
+)
+def test_removed_types_are_not_detected_deterministically(text):
+    """Phone, RU passport, SNILS and INN are no longer part of the pattern layer."""
+    assert pii.redact(text).types == []
 
 
 def test_leak_detection_ignores_placeholders_but_catches_values():
-    """A returned <PHONE_NUMBER> is fine; the actual number coming back is not."""
-    assert pii.leaked_types("ваш номер <PHONE_NUMBER>", ["PHONE_NUMBER"]) == []
-    assert pii.leaked_types("ваш номер +7 916 123-45-67", ["PHONE_NUMBER"]) == ["PHONE_NUMBER"]
+    """A returned <EMAIL_ADDRESS> is fine; the actual address coming back is not."""
+    assert pii.leaked_types("ваша почта <EMAIL_ADDRESS>", ["EMAIL_ADDRESS"]) == []
+    assert pii.leaked_types("ваша почта a.b@c.io", ["EMAIL_ADDRESS"]) == ["EMAIL_ADDRESS"]
 
 
 # --- what the checksums buy (TASK A9-1) ---------------------------------------------
@@ -64,9 +66,7 @@ def test_leak_detection_ignores_placeholders_but_catches_values():
     [
         ("заказ 1234567890123456 отгружен", "16 digits that fail Luhn"),
         ("карта 4111 1111 1111 1112 срок", "one digit off a real card"),
-        ("код 123456789 подтвердите", "9 digits, not a SNILS"),
         ("счёт DE89370400440532013001 тут", "one digit off a real IBAN"),
-        ("артикул 500100732250 на складе", "12 digits that fail the INN check"),
     ],
 )
 def test_a_number_that_fails_its_checksum_is_not_personal_data(text, why):
@@ -83,6 +83,6 @@ def test_the_placeholder_does_not_eat_the_surrounding_spacing():
 
 
 def test_two_types_in_one_text_are_both_named():
-    result = pii.redact("телефон +7 916 123-45-67 и почта a.b@c.io")
-    assert sorted(result.types) == ["EMAIL_ADDRESS", "PHONE_NUMBER"]
-    assert "EMAIL_ADDRESS, PHONE_NUMBER" in result.notice
+    result = pii.redact("карта 4111 1111 1111 1111 и почта a.b@c.io")
+    assert sorted(result.types) == ["CREDIT_CARD", "EMAIL_ADDRESS"]
+    assert "CREDIT_CARD, EMAIL_ADDRESS" in result.notice

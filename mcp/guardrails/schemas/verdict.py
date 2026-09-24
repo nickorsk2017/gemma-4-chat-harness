@@ -65,7 +65,7 @@ class Surface(str, Enum):
 class Redaction(BaseModel):
     """One PII type that was found and replaced. Never carries the value (TASK R11)."""
 
-    type: str = Field(..., description="PII entity type, e.g. 'PHONE_NUMBER'.")
+    type: str = Field(..., description="PII entity type, e.g. 'EMAIL_ADDRESS'.")
     count: int = Field(..., ge=1, description="How many instances were replaced.")
 
 

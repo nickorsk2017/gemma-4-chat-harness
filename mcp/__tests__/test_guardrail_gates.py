@@ -158,9 +158,9 @@ async def test_redaction_happens_before_the_prompt_is_persisted(
         monkeypatch,
         inp=Verdict(
             decision=Decision.ALLOWED,
-            text="мой телефон <PHONE_NUMBER>, помоги",
-            redactions=[Redaction(type="PHONE_NUMBER", count=1)],
-            notice="Note: the user's personal data (PHONE_NUMBER) was not passed "
+            text="моя почта <EMAIL_ADDRESS>, помоги",
+            redactions=[Redaction(type="EMAIL_ADDRESS", count=1)],
+            notice="Note: the user's personal data (EMAIL_ADDRESS) was not passed "
             "to the system, per policy.",
         ),
     )
@@ -176,9 +176,9 @@ async def test_redaction_happens_before_the_prompt_is_persisted(
 
     model_text = " ".join(str(m.content) for m in llm_spy[0])
     assert "+7 916 123-45-67" not in model_text, "raw PII reached the model"
-    assert "<PHONE_NUMBER>" in model_text
+    assert "<EMAIL_ADDRESS>" in model_text
 
-    assert result.guardrails.redacted_types == ["PHONE_NUMBER"]
+    assert result.guardrails.redacted_types == ["EMAIL_ADDRESS"]
     assert result.guardrails.notice.startswith("Note: the user's personal data")
     # The notice must actually be carried into the prompt, not only reported.
     assert "per policy." in model_text

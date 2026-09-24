@@ -1,7 +1,7 @@
 """The flow (TASK A3-4): PII masking library -> keyword pre-filter -> model.
 
 Ordering is not cosmetic. Masking runs first so that no layer downstream — including the
-model, a network call to a third party — ever sees a phone number or a passport. The
+model, a network call to a third party — ever sees a card number or an IBAN. The
 keyword layer runs second and **decides nothing** (PLAN D12): its hits are evidence, and
 their one job is to aim the model's bounded window at the passage that matters, which is
 what keeps whole-document checks from being truncated blindly from the front.
